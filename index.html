@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
-<title>Stroke Lab V3.3</title>
+<title>Stroke Lab V3.5</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -148,10 +148,10 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
       <h1><span class="soft">Train with purpose.</span><br><span class="soft">Outperform the competition.</span><br><span class="soft">Be a complete player.</span><br><span class="hit">The Best You.</span></h1>
       <p>See more. Train smarter. Build the complete player.</p>
       <div class="hero-pills">
-        <span class="pill"><strong>Any angle</strong> &middot; call out what cannot be seen</span>
+        <span class="pill"><strong>Any angle</strong> | call out what cannot be seen</span>
         <span class="pill"><strong>Constant Athletic Movement</strong></span>
-        <span class="pill"><strong>Family Hub</strong> &middot; individual profiles</span>
-        <span class="pill"><strong>Private by default</strong> &middot; video stays on device</span>
+        <span class="pill"><strong>Family Hub</strong> | individual profiles</span>
+        <span class="pill"><strong>Private by default</strong> | video stays on device</span>
       </div>
     </div>
   </section>
@@ -167,7 +167,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     <div class="grid">
       <div class="card span7">
         <div class="eyebrow">Family Hub</div>
-        <h2>Who&rsquo;s training?</h2>
+        <h2>Who's training?</h2>
         <p class="sub">Choose a profile. Each player keeps their own hand preference, reminders, session history and progress.</p>
         <div id="profileList" class="profile-list"></div>
         <div class="row" style="margin-top:12px">
@@ -176,9 +176,9 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
         </div>
       </div>
       <div class="card span5">
-        <div class="eyebrow">Today&rsquo;s focus</div>
+        <div class="eyebrow">Today's focus</div>
         <h2 id="homePlayerName">Player</h2>
-        <div id="homeFocus" class="quote">&ldquo;Constant Athletic Movement.&rdquo;</div>
+        <div id="homeFocus" class="quote">"Constant Athletic Movement."</div>
         <div class="notes-list" id="homePinned" style="margin-top:14px"></div>
       </div>
       <div class="card span12">
@@ -214,9 +214,10 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
           <canvas id="overlay"></canvas>
         </div>
         <div class="progress" id="progressTrack"><div id="progressFill"></div></div>
-        <div class="status" id="status">Loading pose model&hellip;</div>
+        <div class="status" id="status">Loading pose model...</div>
         <div class="row" style="margin-top:12px">
           <button id="analyzeBtn" class="primary" disabled>Review session</button>
+          <button id="cancelAnalysisBtn" class="ghost hidden">Cancel review</button>
           <button id="saveSessionBtn" class="ghost hidden">Save result</button>
         </div>
       </div>
@@ -297,7 +298,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V3.2 &middot; local-first family beta &middot; video analysis runs in your browser</footer>
+  <footer>Stroke Lab V3.2 | local-first family beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -357,13 +358,13 @@ function renderProfiles(){
   const list=document.getElementById('profileList'); list.innerHTML='';
   state.profiles.forEach(p=>{
     const el=document.createElement('div');el.className='profile'+(p.id===state.activeProfile?' active':'');
-    el.innerHTML=`<div class="avatar">${p.photo?`<img src="${p.photo}">`:initials(p.name)}</div><div class="meta"><strong>${esc(p.name)}</strong><small>${p.hand==='left'?'Lefty':'Righty'} &middot; ${esc(p.level||'Developing')}</small></div><button class="ghost">Select</button>`;
+    el.innerHTML=`<div class="avatar">${p.photo?`<img src="${p.photo}">`:initials(p.name)}</div><div class="meta"><strong>${esc(p.name)}</strong><small>${p.hand==='left'?'Lefty':'Righty'} | ${esc(p.level||'Developing')}</small></div><button class="ghost">Select</button>`;
     el.querySelector('button').onclick=()=>{state.activeProfile=p.id;saveState();renderAll()};
     list.appendChild(el);
   });
   const p=activeProfile();
   document.getElementById('homePlayerName').textContent=p?p.name:'Player';
-  document.getElementById('activePlayerBadge').textContent=p?`${p.name} &middot; ${p.hand==='left'?'Left':'Right'}-handed`:'';
+  document.getElementById('activePlayerBadge').textContent=p?`${p.name} | ${p.hand==='left'?'Left':'Right'}-handed`:'';
   document.getElementById('progressPlayer').textContent=p?p.name:'&mdash;';
   const pinned=(p?.notes||[]).filter(n=>n.pinned).slice(0,3);
   document.getElementById('homePinned').innerHTML=pinned.map(n=>`<div class="note-item">${esc(n.text)}<div class="note-tags"><span class="tag">${esc(n.category)}</span></div></div>`).join('')||'<div class="sub">No pinned reminders yet.</div>';
@@ -398,9 +399,9 @@ function renderProgress(){
   if(!sessions.length){spark.innerHTML='<div class="sub">No saved sessions yet.</div>';document.getElementById('progressSummary').textContent='Save session results to build your trend.';document.getElementById('progressStats').innerHTML='';document.getElementById('historyList').innerHTML='';return}
   const recent=sessions.slice(-18);recent.forEach(s=>{const i=document.createElement('i');i.style.height=Math.max(10,s.score)+'%';i.title=`${s.stroke} ${s.score}`;spark.appendChild(i)});
   const avg=Math.round(sessions.reduce((a,s)=>a+s.score,0)/sessions.length),last=sessions.at(-1);
-  document.getElementById('progressSummary').textContent=`${sessions.length} saved session${sessions.length===1?'':'s'} &middot; average ${avg}/100 &middot; latest ${last.score}/100.`;
+  document.getElementById('progressSummary').textContent=`${sessions.length} saved session${sessions.length===1?'':'s'} | average ${avg}/100 | latest ${last.score}/100.`;
   document.getElementById('progressStats').innerHTML=`<div class="note-item"><strong>${sessions.length}</strong><div class="sub">Sessions</div></div><div class="note-item" style="margin-top:8px"><strong>${avg}/100</strong><div class="sub">Average score</div></div>`;
-  document.getElementById('historyList').innerHTML=sessions.slice().reverse().map(s=>{const label=(s.strokes&&s.strokes.length)?s.strokes.map(cap).join(' + '):cap(s.stroke||'Session');return `<div class="note-item"><div class="row between"><strong>${label} &middot; ${s.score}/100</strong><span class="sub">${new Date(s.ts).toLocaleDateString()}</span></div><div class="sub">${esc(s.angleLabel||'View not classified')}</div></div>`}).join('');
+  document.getElementById('historyList').innerHTML=sessions.slice().reverse().map(s=>{const label=(s.strokes&&s.strokes.length)?s.strokes.map(cap).join(' + '):cap(s.stroke||'Session');return `<div class="note-item"><div class="row between"><strong>${label} | ${s.score}/100</strong><span class="sub">${new Date(s.ts).toLocaleDateString()}</span></div><div class="sub">${esc(s.angleLabel||'View not classified')}</div></div>`}).join('');
 }
 function renderAll(){renderProfiles();renderNotes();renderProgress();const p=activeProfile();if(p)dominantHand=p.hand}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
@@ -433,7 +434,7 @@ document.querySelectorAll('#strokeTabs button').forEach(b=>b.onclick=()=>{
  refreshStrokeButtons();
 });
 refreshStrokeButtons();
-document.getElementById('videoInput').onchange=e=>{const f=e.target.files[0];if(!f)return;video.src=URL.createObjectURL(f);video.style.display='block';document.getElementById('videoEmpty').style.display='none';document.getElementById('videoMeta').textContent=`${f.name} &middot; ${(f.size/1048576).toFixed(1)} MB`;video.onloadedmetadata=()=>{videoLoaded=true;refreshStrokeButtons()}};
+document.getElementById('videoInput').onchange=e=>{const f=e.target.files[0];if(!f)return;video.src=URL.createObjectURL(f);video.style.display='block';document.getElementById('videoEmpty').style.display='none';document.getElementById('videoMeta').textContent=`${f.name} | ${(f.size/1048576).toFixed(1)} MB`;video.onloadedmetadata=()=>{videoLoaded=true;refreshStrokeButtons()}};
 async function initModel(){
  try{
    await tf.setBackend('webgl');await tf.ready();
@@ -487,58 +488,206 @@ function scoreOne(m,stroke){
  let sum=0,n=0;rows.forEach(r=>{if(r.v==null)return;const mid=(r.range[0]+r.range[1])/2,half=(r.range[1]-r.range[0])/2;const s=Math.max(0,1-Math.max(0,Math.abs(r.v-mid)-half)/(half*2.2));r.score=Math.round(s*100);sum+=s;n++});
  return {stroke,score:n?Math.round(sum/n*100):0,rows:rows.filter(r=>r.v!=null)}
 }
-function seek(t){return new Promise(res=>{const done=()=>{video.removeEventListener('seeked',done);res()};video.addEventListener('seeked',done);video.currentTime=Math.max(0,Math.min(video.duration-.03,t))})}
+function waitForVideoFrame(timeoutMs=700){
+  return new Promise(res=>{
+    let finished=false;
+    const finish=()=>{if(finished)return;finished=true;clearTimeout(timer);res(true)};
+    const timer=setTimeout(()=>{if(finished)return;finished=true;res(false)},timeoutMs);
+    if(typeof video.requestVideoFrameCallback==='function'){
+      video.requestVideoFrameCallback(()=>finish());
+    }else{
+      requestAnimationFrame(()=>requestAnimationFrame(()=>finish()));
+    }
+  });
+}
+async function seek(t,timeoutMs=2800){
+  const target=Math.max(0,Math.min((video.duration||0)-.05,t));
+  video.pause();
+  if(video.readyState>=2 && Math.abs(video.currentTime-target)<.035){
+    await waitForVideoFrame();
+    return true;
+  }
+  return await new Promise(resolve=>{
+    let settled=false;
+    const cleanup=()=>{
+      video.removeEventListener('seeked',onSeeked);
+      video.removeEventListener('error',onError);
+      clearTimeout(timer);
+    };
+    const finish=async ok=>{
+      if(settled)return;
+      settled=true;
+      cleanup();
+      if(ok) await waitForVideoFrame();
+      resolve(ok);
+    };
+    const onSeeked=()=>finish(true);
+    const onError=()=>finish(false);
+    const timer=setTimeout(()=>finish(false),timeoutMs);
+    video.addEventListener('seeked',onSeeked,{once:true});
+    video.addEventListener('error',onError,{once:true});
+    try{
+      if(typeof video.fastSeek==='function' && Math.abs(video.currentTime-target)>.75) video.fastSeek(target);
+      else video.currentTime=target;
+    }catch(e){
+      finish(false);
+    }
+  });
+}
 function drawPose(k){
  const c=overlay,box=video.getBoundingClientRect();c.width=video.videoWidth;c.height=video.videoHeight;const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.strokeStyle='#d8f238';ctx.fillStyle='#d8f238';ctx.lineWidth=Math.max(2,c.width/300);
  const edges=[['left_shoulder','right_shoulder'],['left_hip','right_hip'],['left_shoulder','left_elbow'],['left_elbow','left_wrist'],['right_shoulder','right_elbow'],['right_elbow','right_wrist'],['left_hip','left_knee'],['left_knee','left_ankle'],['right_hip','right_knee'],['right_knee','right_ankle'],['left_shoulder','left_hip'],['right_shoulder','right_hip']];
  edges.forEach(([a,b])=>{if(ok(k[a])&&ok(k[b])){ctx.beginPath();ctx.moveTo(k[a].x,k[a].y);ctx.lineTo(k[b].x,k[b].y);ctx.stroke()}});
  Object.values(k).forEach(p=>{if(ok(p)){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(2,c.width/220),0,Math.PI*2);ctx.fill()}});
 }
+let analysisCancelled=false;
+const cancelAnalysisBtn=document.getElementById('cancelAnalysisBtn');
+cancelAnalysisBtn.onclick=()=>{analysisCancelled=true;statusEl.textContent='Stopping review...'};
 analyzeBtn.onclick=async()=>{
  const p=activeProfile();if(p)dominantHand=p.hand;
  const strokes=[...selectedStrokes];
  if(!strokes.length){statusEl.textContent='Choose at least one stroke.';return}
- analyzeBtn.disabled=true;progressTrack.style.display='block';document.getElementById('resultCard').classList.add('hidden');
+ analysisCancelled=false;
+ analyzeBtn.disabled=true;
+ cancelAnalysisBtn.classList.remove('hidden');
+ document.getElementById('saveSessionBtn').classList.add('hidden');
+ progressTrack.style.display='block';
+ progressFill.style.width='0%';
+ document.getElementById('resultCard').classList.add('hidden');
+
  work.width=video.videoWidth;work.height=video.videoHeight;
- const duration=video.duration||1;const frames=Math.max(50,Math.min(180,Math.round(50+duration*1.05)));const step=duration/frames;
- let bestByStroke={},valid=0,readability=0,angles={};
- for(let i=0;i<frames;i++){
-   await seek(Math.min(duration-.04,i*step));wctx.drawImage(video,0,0,work.width,work.height);
-   try{
-     const poses=await detector.estimatePoses(work);
-     if(poses?.length){
-       const m=metricsFromPose(poses[0]);
-       readability+=m.readablePct;
-       angles[m.angleLabel]=(angles[m.angleLabel]||0)+1;
-       let frameUsable=false;
-       strokes.forEach(stroke=>{
-         const s=scoreOne(m,stroke);
-         if(s.rows.length>=2){
-           frameUsable=true;
-           if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score)bestByStroke[stroke]={m,s,t:video.currentTime};
-         }
-       });
-       if(frameUsable)valid++;
+ const duration=video.duration||1;
+ const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+ // Depth-first sampling strategy:
+ // short clips: ~50-60 samples
+ // ~1 minute: ~85-100 samples
+ // ~2 minutes: ~125-155 samples
+ // longer sessions: scale toward ~180+ while keeping mobile-safe caps.
+ // Important: timeouts apply to individual seeks/pose reads only; they NEVER abort the whole review.
+ let frames;
+ if(duration<=20) frames=Math.round(50 + duration*.45);
+ else if(duration<=60) frames=Math.round(58 + (duration-20)*.95);
+ else if(duration<=120) frames=Math.round(96 + (duration-60)*.82);
+ else frames=Math.round(145 + (duration-120)*.42);
+
+ const mobileCap=isiOS?190:220;
+ frames=Math.max(50,Math.min(mobileCap,frames));
+ const step=duration/frames;
+
+ let bestByStroke={},valid=0,readability=0,angles={},seekSkips=0,poseErrors=0,processed=0;
+
+ statusEl.textContent=`Preparing ${frames} samples. Longer clips take longer, but the review will keep moving even if individual frames time out.`;
+
+ try{
+   for(let i=0;i<frames;i++){
+     if(analysisCancelled) break;
+     const target=Math.min(duration-.06,i*step);
+     statusEl.textContent=`Seeking sample ${i+1} of ${frames}...`;
+
+     const seekOK=await seek(target,2800);
+     if(analysisCancelled) break;
+     if(!seekOK){
+       seekSkips++;
+       progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
+       statusEl.textContent=`Skipped a slow video frame (${i+1}/${frames}). Continuing...`;
+       await new Promise(r=>setTimeout(r,0));
+       continue;
      }
-   }catch(e){console.warn(e)}
-   progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;statusEl.textContent=`Reviewing ${i+1} of ${frames} samples&hellip;`;await new Promise(r=>setTimeout(r,0));
+
+     statusEl.textContent=`Reading body position ${i+1} of ${frames}...`;
+     try{
+       wctx.drawImage(video,0,0,work.width,work.height);
+       const poses=await Promise.race([
+         detector.estimatePoses(work),
+         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Pose read timed out')),4500))
+       ]);
+       if(analysisCancelled) break;
+       if(poses?.length){
+         processed++;
+         const m=metricsFromPose(poses[0]);
+         readability+=m.readablePct;
+         angles[m.angleLabel]=(angles[m.angleLabel]||0)+1;
+         let frameUsable=false;
+         strokes.forEach(stroke=>{
+           const s=scoreOne(m,stroke);
+           if(s.rows.length>=2){
+             frameUsable=true;
+             if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score){
+               bestByStroke[stroke]={m,s,t:video.currentTime};
+             }
+           }
+         });
+         if(frameUsable)valid++;
+       }
+     }catch(e){
+       poseErrors++;
+       console.warn('Pose sample skipped:',e);
+     }
+
+     progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
+     statusEl.textContent=`Processed ${i+1} of ${frames} samples...`;
+     await new Promise(r=>setTimeout(r,0));
+   }
+
+   if(analysisCancelled){
+     statusEl.textContent='Review canceled.';
+     return;
+   }
+
+   const denom=Math.max(1,processed);
+   const avgRead=readability/denom;
+   const angleLabel=Object.entries(angles).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Unclear camera angle';
+   document.getElementById('angleRead').textContent=angleLabel;
+   document.getElementById('visibilityRead').textContent=
+     `Body visibility ${Math.round(avgRead*100)}% | ${valid}/${processed||frames} usable reads` +
+     (seekSkips?` | ${seekSkips} slow frame${seekSkips===1?'':'s'} skipped`:'') + '.';
+
+   const strokeResults=strokes.map(stroke=>{
+     const best=bestByStroke[stroke];
+     if(!best)return {stroke,score:null,rows:[],readable:false};
+     const score=Math.round(best.s.score*Math.min(1,Math.max(.68,avgRead+.08)));
+     return {stroke,score,rows:best.s.rows,readable:true,t:best.t,has3D:best.m.has3D};
+   });
+   const readable=strokeResults.filter(r=>r.readable);
+
+   if(!readable.length){
+     statusEl.textContent=
+       `No reliable pose read. ${seekSkips?'Some video seeks were skipped. ':''}` +
+       'Try brighter lighting, more of the body in frame, or a steadier clip.';
+     return;
+   }
+
+   const bestOverall=readable.slice().sort((a,b)=>b.score-a.score)[0];
+   statusEl.textContent='Preparing the best frame...';
+   const finalSeek=await seek(bestOverall.t,2800);
+   if(finalSeek && !analysisCancelled){
+     try{
+       wctx.drawImage(video,0,0,work.width,work.height);
+       const poses=await Promise.race([
+         detector.estimatePoses(work),
+         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),4500))
+       ]);
+       if(poses?.length)drawPose(mapKP(poses[0].keypoints));
+     }catch(e){console.warn(e)}
+   }
+
+   const score=Math.round(readable.reduce((a,r)=>a+r.score,0)/readable.length);
+   lastResult={
+     score,strokes,ts:Date.now(),angleLabel,visibility:avgRead,
+     results:strokeResults,has3D:readable.some(r=>r.has3D),
+     diagnostics:{frames,processed,seekSkips,poseErrors}
+   };
+   renderResult(lastResult);
+   statusEl.textContent=
+     `Review complete. ${processed} frames read` +
+     (seekSkips?`, ${seekSkips} slow frame${seekSkips===1?'':'s'} skipped without stopping the session`:'') + '.';
+   document.getElementById('saveSessionBtn').classList.remove('hidden');
+ }finally{
+   progressTrack.style.display='none';
+   analyzeBtn.disabled=false;
+   cancelAnalysisBtn.classList.add('hidden');
+   refreshStrokeButtons();
  }
- progressTrack.style.display='none';refreshStrokeButtons();
- const avgRead=frames?readability/frames:0;const angleLabel=Object.entries(angles).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Unclear camera angle';
- document.getElementById('angleRead').textContent=angleLabel;document.getElementById('visibilityRead').textContent=`Body visibility ${Math.round(avgRead*100)}% &middot; ${valid}/${frames} usable samples.`;
- const strokeResults=strokes.map(stroke=>{
-   const best=bestByStroke[stroke];
-   if(!best)return {stroke,score:null,rows:[],readable:false};
-   const score=Math.round(best.s.score*Math.min(1,Math.max(.68,avgRead+.08)));
-   return {stroke,score,rows:best.s.rows,readable:true,t:best.t,has3D:best.m.has3D};
- });
- const readable=strokeResults.filter(r=>r.readable);
- if(!readable.length){statusEl.textContent='No reliable pose read. Try brighter lighting, more of the body in frame, or a steadier clip.';return}
- const bestOverall=readable.slice().sort((a,b)=>b.score-a.score)[0];
- await seek(bestOverall.t);wctx.drawImage(video,0,0,work.width,work.height);const poses=await detector.estimatePoses(work);if(poses?.length)drawPose(mapKP(poses[0].keypoints));
- const score=Math.round(readable.reduce((a,r)=>a+r.score,0)/readable.length);
- lastResult={score,strokes,ts:Date.now(),angleLabel,visibility:avgRead,results:strokeResults,has3D:readable.some(r=>r.has3D)};
- renderResult(lastResult);statusEl.textContent='Review complete.';document.getElementById('saveSessionBtn').classList.remove('hidden');
 };
 function renderResult(r){
  document.getElementById('resultCard').classList.remove('hidden');
@@ -561,7 +710,7 @@ function renderResult(r){
  const firstReadable=r.results.find(x=>x.readable);
  document.getElementById('liveMetrics').innerHTML=firstReadable?firstReadable.rows.map(x=>`<div class="metric"><span>${x.label}</span><div class="bar"><i style="width:${x.score}%"></i></div><strong>${x.score}</strong></div>`).join(''):'';
 }
-document.getElementById('saveSessionBtn').onclick=()=>{if(!lastResult)return;const p=activeProfile();p.sessions=p.sessions||[];p.sessions.push(lastResult);saveState();renderProgress();statusEl.textContent='Saved to this player&rsquo;s history.'};
+document.getElementById('saveSessionBtn').onclick=()=>{if(!lastResult)return;const p=activeProfile();p.sessions=p.sessions||[];p.sessions.push(lastResult);saveState();renderProgress();statusEl.textContent='Saved to this player's history.'};
 
 // initial render
 renderAll();
