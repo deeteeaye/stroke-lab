@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V3.8</title>
+<title>Stroke Lab V4.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -239,6 +239,13 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
         <p class="sub" id="visibilityRead">Load a video to begin.</p>
         <div id="liveMetrics" class="metric-list"></div>
       </div>
+      <div class="card span12 hidden" id="checkpointCard">
+        <div class="row between">
+          <div><div class="eyebrow">Saved Review Snapshot</div><h2 id="checkpointTitle">Review in progress</h2></div>
+          <button class="ghost" id="clearCheckpointBtn">Clear snapshot</button>
+        </div>
+        <p class="sub" id="checkpointText"></p>
+      </div>
       <div class="card span12 hidden" id="resultCard">
         <div class="grid">
           <div class="span4">
@@ -353,6 +360,21 @@ saveState();
 
 function loadState(){try{const v=JSON.parse(localStorage.getItem(KEY));return v&&v.profiles?v:structuredClone(seed)}catch(e){return structuredClone(seed)}}
 function saveState(){localStorage.setItem(KEY,JSON.stringify(state))}
+const REVIEW_KEY='strokeLabV3ReviewCheckpoint';
+function loadReviewCheckpoint(){try{return JSON.parse(localStorage.getItem(REVIEW_KEY))}catch(e){return null}}
+function saveReviewCheckpoint(cp){try{localStorage.setItem(REVIEW_KEY,JSON.stringify(cp))}catch(e){console.warn(e)} renderCheckpoint()}
+function clearReviewCheckpoint(){try{localStorage.removeItem(REVIEW_KEY)}catch(e){} renderCheckpoint()}
+function renderCheckpoint(){
+  const cp=loadReviewCheckpoint(),card=document.getElementById('checkpointCard');
+  if(!card)return;
+  if(!cp){card.classList.add('hidden');return}
+  card.classList.remove('hidden');
+  const done=cp.processed||0,total=cp.frames||0,pct=total?Math.round(done/total*100):0;
+  document.getElementById('checkpointTitle').textContent=cp.complete?'Last review saved':'Review snapshot preserved';
+  document.getElementById('checkpointText').textContent=cp.complete
+    ? `Completed ${new Date(cp.updatedAt).toLocaleString()} and saved to session history.`
+    : `Saved ${done} of ${total} samples (${pct}%). If iOS suspends or discards the web app, this checkpoint remains instead of disappearing.`;
+}
 function activeProfile(){return state.profiles.find(p=>p.id===state.activeProfile)||state.profiles[0]}
 function initials(n){return n.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join('')||'P'}
 function switchView(id){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));if(id==='progress')renderProgress();if(id==='prep')renderNotes()}
@@ -391,6 +413,7 @@ document.getElementById('saveProfileBtn').onclick=async()=>{
 document.getElementById('deleteProfileBtn').onclick=()=>{if(state.profiles.length<=1)return alert('Keep at least one player profile.');state.profiles=state.profiles.filter(p=>p.id!==editingProfileId);state.activeProfile=state.profiles[0].id;saveState();closeModal('profileModal');renderAll()};
 
 let currentFilter='all';
+document.getElementById('clearCheckpointBtn').onclick=()=>clearReviewCheckpoint();
 document.getElementById('addNoteBtn').onclick=()=>openModal('noteModal');
 document.querySelectorAll('#noteFilters button').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;document.querySelectorAll('#noteFilters button').forEach(x=>x.classList.toggle('active',x===b));renderNotes()});
 document.getElementById('saveNoteBtn').onclick=()=>{const p=activeProfile(),text=document.getElementById('noteText').value.trim();if(!p||!text)return;p.notes=p.notes||[];p.notes.unshift({id:'n'+Date.now(),text,category:document.getElementById('noteCategory').value,pinned:document.getElementById('notePinned').value==='true'});document.getElementById('noteText').value='';saveState();closeModal('noteModal');renderAll()};
@@ -415,6 +438,30 @@ function renderAll(){renderProfiles();renderNotes();renderProgress();const p=act
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function cap(s){return s? s[0].toUpperCase()+s.slice(1):''}
 function fileToData(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
+
+let reviewWakeLock=null;
+async function acquireReviewWakeLock(){
+  try{
+    if('wakeLock' in navigator && document.visibilityState==='visible'){
+      reviewWakeLock=await navigator.wakeLock.request('screen');
+      reviewWakeLock.addEventListener('release',()=>{reviewWakeLock=null});
+    }
+  }catch(e){console.warn('Wake lock unavailable',e)}
+}
+async function releaseReviewWakeLock(){
+  try{if(reviewWakeLock)await reviewWakeLock.release()}catch(e){}
+  reviewWakeLock=null;
+}
+document.addEventListener('visibilitychange',()=>{
+  const cp=loadReviewCheckpoint();
+  if(document.visibilityState==='hidden' && cp && !cp.complete){
+    cp.updatedAt=Date.now();cp.backgrounded=true;saveReviewCheckpoint(cp);
+  }
+  if(document.visibilityState==='visible' && cp && !cp.complete){
+    const el=document.getElementById('status');
+    if(el)el.textContent=`Review snapshot preserved at ${cp.processed||0} of ${cp.frames||0} samples.`;
+  }
+});
 
 // ---------------- Pose analysis ----------------
 const video=document.getElementById('video'), overlay=document.getElementById('overlay'), analyzeBtn=document.getElementById('analyzeBtn'), statusEl=document.getElementById('status');
@@ -569,51 +616,60 @@ function scoreOne(m,stroke){
  let sum=0,n=0;rows.forEach(r=>{if(r.v==null)return;const mid=(r.range[0]+r.range[1])/2,half=(r.range[1]-r.range[0])/2;const s=Math.max(0,1-Math.max(0,Math.abs(r.v-mid)-half)/(half*2.2));r.score=Math.round(s*100);sum+=s;n++});
  return {stroke,score:n?Math.round(sum/n*100):0,rows:rows.filter(r=>r.v!=null)}
 }
-function waitForVideoFrame(timeoutMs=700){
-  return new Promise(res=>{
-    let finished=false;
-    const finish=()=>{if(finished)return;finished=true;clearTimeout(timer);res(true)};
-    const timer=setTimeout(()=>{if(finished)return;finished=true;res(false)},timeoutMs);
-    if(typeof video.requestVideoFrameCallback==='function'){
-      video.requestVideoFrameCallback(()=>finish());
-    }else{
-      requestAnimationFrame(()=>requestAnimationFrame(()=>finish()));
-    }
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+async function ensureVideoReady(timeoutMs=12000){
+  if(video.readyState>=2 && Number.isFinite(video.duration) && video.duration>0)return true;
+  return await new Promise(resolve=>{
+    let done=false;
+    const finish=v=>{if(done)return;done=true;cleanup();resolve(v)};
+    const cleanup=()=>{
+      clearTimeout(timer);
+      video.removeEventListener('loadeddata',onReady);
+      video.removeEventListener('canplay',onReady);
+      video.removeEventListener('error',onError);
+    };
+    const onReady=()=>finish(true),onError=()=>finish(false);
+    const timer=setTimeout(()=>finish(video.readyState>=2),timeoutMs);
+    video.addEventListener('loadeddata',onReady,{once:true});
+    video.addEventListener('canplay',onReady,{once:true});
+    video.addEventListener('error',onError,{once:true});
+    try{video.load()}catch(e){}
   });
 }
-async function seek(t,timeoutMs=2800){
-  const target=Math.max(0,Math.min((video.duration||0)-.05,t));
+async function seek(t,timeoutMs=9000){
+  const dur=video.duration||0;
+  const target=Math.max(0,Math.min(Math.max(0,dur-.08),t));
   video.pause();
-  if(video.readyState>=2 && Math.abs(video.currentTime-target)<.035){
-    await waitForVideoFrame();
-    return true;
-  }
-  return await new Promise(resolve=>{
-    let settled=false;
-    const cleanup=()=>{
-      video.removeEventListener('seeked',onSeeked);
-      video.removeEventListener('error',onError);
-      clearTimeout(timer);
-    };
-    const finish=async ok=>{
-      if(settled)return;
-      settled=true;
-      cleanup();
-      if(ok) await waitForVideoFrame();
-      resolve(ok);
-    };
-    const onSeeked=()=>finish(true);
-    const onError=()=>finish(false);
-    const timer=setTimeout(()=>finish(false),timeoutMs);
-    video.addEventListener('seeked',onSeeked,{once:true});
-    video.addEventListener('error',onError,{once:true});
+
+  // iOS Safari is much more reliable with direct currentTime assignment than fastSeek()
+  // when repeatedly sampling local MOV files.
+  for(let attempt=0;attempt<2;attempt++){
+    if(!(await ensureVideoReady(timeoutMs)))continue;
     try{
-      if(typeof video.fastSeek==='function' && Math.abs(video.currentTime-target)>.75) video.fastSeek(target);
-      else video.currentTime=target;
+      video.currentTime=target;
     }catch(e){
-      finish(false);
+      await sleep(180);
+      continue;
     }
-  });
+
+    const started=performance.now();
+    while(performance.now()-started<timeoutMs){
+      if(analysisCancelled)return false;
+      const close=Math.abs((video.currentTime||0)-target)<0.16;
+      if(close && !video.seeking && video.readyState>=2){
+        // Give WebKit a moment to expose the newly decoded frame to canvas.
+        await sleep(120);
+        return true;
+      }
+      await sleep(50);
+    }
+
+    // Retry the same target once. This catches WebKit's occasional dropped seek
+    // without throwing away a valid sample.
+    try{video.currentTime=Math.max(0,target-.001)}catch(e){}
+    await sleep(220);
+  }
+  return false;
 }
 function drawPose(k){
  const c=overlay,box=video.getBoundingClientRect();c.width=video.videoWidth;c.height=video.videoHeight;const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.strokeStyle='#d8f238';ctx.fillStyle='#d8f238';ctx.lineWidth=Math.max(2,c.width/300);
@@ -626,6 +682,7 @@ const cancelAnalysisBtn=document.getElementById('cancelAnalysisBtn');
 cancelAnalysisBtn.onclick=()=>{analysisCancelled=true;statusEl.textContent='Stopping review...'};
 analyzeBtn.onclick=async()=>{
  const p=activeProfile();if(p)dominantHand=p.hand;
+ await acquireReviewWakeLock();
  const strokes=[...selectedStrokes];
  if(!strokes.length){statusEl.textContent='Choose at least one stroke.';return}
  analysisCancelled=false;
@@ -656,8 +713,14 @@ analyzeBtn.onclick=async()=>{
  const step=duration/frames;
 
  let bestByStroke={},valid=0,readability=0,angles={},seekSkips=0,poseErrors=0,processed=0;
+ let checkpoint={
+   id:'review-'+Date.now(),profileId:p?.id||null,profileName:p?.name||'Player',
+   strokes,startedAt:Date.now(),updatedAt:Date.now(),complete:false,
+   frames,processed:0,valid:0,seekSkips:0,poseErrors:0,preliminaryScore:null
+ };
+ saveReviewCheckpoint(checkpoint);
 
- statusEl.textContent=`Preparing ${frames} samples. Longer clips take longer, but the review will keep moving even if individual frames time out.`;
+ statusEl.textContent=`Preparing ${frames} samples. Stroke Lab will wait for each iPhone video frame to decode and retry slow seeks instead of discarding them.`;
 
  try{
    for(let i=0;i<frames;i++){
@@ -665,12 +728,12 @@ analyzeBtn.onclick=async()=>{
      const target=Math.min(duration-.06,i*step);
      statusEl.textContent=`Seeking sample ${i+1} of ${frames}...`;
 
-     const seekOK=await seek(target,2800);
+     const seekOK=await seek(target,9000);
      if(analysisCancelled) break;
      if(!seekOK){
        seekSkips++;
        progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
-       statusEl.textContent=`Skipped a slow video frame (${i+1}/${frames}). Continuing...`;
+       statusEl.textContent=`Could not decode sample ${i+1} after two attempts. Continuing with the remaining samples...`;
        await new Promise(r=>setTimeout(r,0));
        continue;
      }
@@ -707,11 +770,17 @@ analyzeBtn.onclick=async()=>{
 
      progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
      statusEl.textContent=`Processed ${i+1} of ${frames} samples...`;
+     const prelimScores=Object.values(bestByStroke).map(x=>x?.s?.score).filter(v=>Number.isFinite(v));
+     checkpoint.processed=i+1;checkpoint.valid=valid;checkpoint.seekSkips=seekSkips;checkpoint.poseErrors=poseErrors;
+     checkpoint.updatedAt=Date.now();
+     checkpoint.preliminaryScore=prelimScores.length?Math.round(prelimScores.reduce((a,b)=>a+b,0)/prelimScores.length):null;
+     saveReviewCheckpoint(checkpoint);
      await new Promise(r=>setTimeout(r,0));
    }
 
    if(analysisCancelled){
-     statusEl.textContent='Review canceled.';
+     checkpoint.updatedAt=Date.now();checkpoint.canceled=true;saveReviewCheckpoint(checkpoint);
+     statusEl.textContent='Review canceled. Partial snapshot preserved.';
      return;
    }
 
@@ -740,7 +809,7 @@ analyzeBtn.onclick=async()=>{
 
    const bestOverall=readable.slice().sort((a,b)=>b.score-a.score)[0];
    statusEl.textContent='Preparing the best frame...';
-   const finalSeek=await seek(bestOverall.t,2800);
+   const finalSeek=await seek(bestOverall.t,9000);
    if(finalSeek && !analysisCancelled){
      try{
        wctx.drawImage(video,0,0,work.width,work.height);
@@ -756,14 +825,21 @@ analyzeBtn.onclick=async()=>{
    lastResult={
      score,strokes,ts:Date.now(),angleLabel,visibility:avgRead,
      results:strokeResults,has3D:readable.some(r=>r.has3D),
-     diagnostics:{frames,processed,seekSkips,poseErrors}
+     diagnostics:{frames,processed,seekSkips,poseErrors},autoSaved:true,reviewId:checkpoint.id
    };
    renderResult(lastResult);
+   if(p){
+     p.sessions=p.sessions||[];
+     if(!p.sessions.some(s=>s.reviewId===checkpoint.id)){p.sessions.push(lastResult);saveState();renderProgress()}
+   }
+   checkpoint.complete=true;checkpoint.processed=frames;checkpoint.updatedAt=Date.now();checkpoint.preliminaryScore=score;
+   saveReviewCheckpoint(checkpoint);
    statusEl.textContent=
-     `Review complete. ${processed} frames read` +
+     `Review complete and saved automatically. ${processed} frames read` +
      (seekSkips?`, ${seekSkips} slow frame${seekSkips===1?'':'s'} skipped without stopping the session`:'') + '.';
-   document.getElementById('saveSessionBtn').classList.remove('hidden');
+   document.getElementById('saveSessionBtn').classList.add('hidden');
  }finally{
+   await releaseReviewWakeLock();
    progressTrack.style.display='none';
    analyzeBtn.disabled=false;
    cancelAnalysisBtn.classList.add('hidden');
@@ -795,6 +871,7 @@ document.getElementById('saveSessionBtn').onclick=()=>{if(!lastResult)return;con
 
 // initial render
 renderAll();
+renderCheckpoint();
 </script>
 </body>
 </html>
