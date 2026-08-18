@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V4.0</title>
+<title>Stroke Lab V4.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -249,7 +249,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
       <div class="card span12 hidden" id="resultCard">
         <div class="grid">
           <div class="span4">
-            <div class="eyebrow">Session score</div>
+            <div class="eyebrow">Pose mechanics score /100</div>
             <div class="score-big" id="scoreBig">&mdash;</div>
             <div class="sub" id="scoreCaption"></div>
           </div>
@@ -561,8 +561,12 @@ async function initModel(){
    await loadPoseLibraries();
    await tf.setBackend('webgl');await tf.ready();
    try{
-     detector=await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose,{runtime:'tfjs',modelType:'full',enableSmoothing:true});
-     statusEl.textContent='3D pose model ready.';
+     const isiOSDevice=/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+     detector=await poseDetection.createDetector(
+       poseDetection.SupportedModels.BlazePose,
+       {runtime:'tfjs',modelType:isiOSDevice?'lite':'full',enableSmoothing:true}
+     );
+     statusEl.textContent=isiOSDevice?'3D pose model ready (mobile-optimized).':'3D pose model ready.';
    }catch(e){
      console.warn('BlazePose unavailable, falling back to MoveNet',e);
      detector=await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,{modelType:poseDetection.movenet.modelType.SINGLEPOSE_THUNDER});
@@ -613,8 +617,24 @@ function scoreOne(m,stroke){
   {key:'elbow',label:'Hitting-arm extension',v:m.elbow,range:t.elbow},
   {key:'stance',label:'Stance / base',v:m.stance,range:t.stance}
  ];
- let sum=0,n=0;rows.forEach(r=>{if(r.v==null)return;const mid=(r.range[0]+r.range[1])/2,half=(r.range[1]-r.range[0])/2;const s=Math.max(0,1-Math.max(0,Math.abs(r.v-mid)-half)/(half*2.2));r.score=Math.round(s*100);sum+=s;n++});
+ let sum=0,n=0;
+ rows.forEach(r=>{
+   if(r.v==null)return;
+   const mid=(r.range[0]+r.range[1])/2;
+   const half=Math.max(.0001,(r.range[1]-r.range[0])/2);
+   const normalized=Math.abs(r.v-mid)/half;
+   // Calibrated curve: midpoint=100, target-range edgeâ80, 2x half-rangeâ41.
+   const s=Math.exp(-0.223*normalized*normalized);
+   r.score=Math.round(Math.max(0,Math.min(1,s))*100);
+   sum+=s;n++;
+ });
  return {stroke,score:n?Math.round(sum/n*100):0,rows:rows.filter(r=>r.v!=null)}
+}
+function median(nums){
+ const a=[...nums].sort((x,y)=>x-y);
+ if(!a.length)return null;
+ const m=Math.floor(a.length/2);
+ return a.length%2?a[m]:(a[m-1]+a[m])/2;
 }
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 async function ensureVideoReady(timeoutMs=12000){
@@ -693,7 +713,11 @@ analyzeBtn.onclick=async()=>{
  progressFill.style.width='0%';
  document.getElementById('resultCard').classList.add('hidden');
 
- work.width=video.videoWidth;work.height=video.videoHeight;
+ const maxAnalysisSide=640;
+ const vw=video.videoWidth||640,vh=video.videoHeight||360;
+ const scale=Math.min(1,maxAnalysisSide/Math.max(vw,vh));
+ work.width=Math.max(1,Math.round(vw*scale));
+ work.height=Math.max(1,Math.round(vh*scale));
  const duration=video.duration||1;
  const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
  // Depth-first sampling strategy:
@@ -713,6 +737,7 @@ analyzeBtn.onclick=async()=>{
  const step=duration/frames;
 
  let bestByStroke={},valid=0,readability=0,angles={},seekSkips=0,poseErrors=0,processed=0;
+ const samplesByStroke=Object.fromEntries(strokes.map(s=>[s,[]]));
  let checkpoint={
    id:'review-'+Date.now(),profileId:p?.id||null,profileName:p?.name||'Player',
    strokes,startedAt:Date.now(),updatedAt:Date.now(),complete:false,
@@ -743,7 +768,7 @@ analyzeBtn.onclick=async()=>{
        wctx.drawImage(video,0,0,work.width,work.height);
        const poses=await Promise.race([
          detector.estimatePoses(work),
-         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Pose read timed out')),4500))
+         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Pose read timed out')),10000))
        ]);
        if(analysisCancelled) break;
        if(poses?.length){
@@ -756,6 +781,7 @@ analyzeBtn.onclick=async()=>{
            const s=scoreOne(m,stroke);
            if(s.rows.length>=2){
              frameUsable=true;
+             samplesByStroke[stroke].push({m,s,t:video.currentTime});
              if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score){
                bestByStroke[stroke]={m,s,t:video.currentTime};
              }
@@ -789,14 +815,51 @@ analyzeBtn.onclick=async()=>{
    const angleLabel=Object.entries(angles).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Unclear camera angle';
    document.getElementById('angleRead').textContent=angleLabel;
    document.getElementById('visibilityRead').textContent=
-     `Body visibility ${Math.round(avgRead*100)}% | ${valid}/${processed||frames} usable reads` +
-     (seekSkips?` | ${seekSkips} slow frame${seekSkips===1?'':'s'} skipped`:'') + '.';
+     `Body visibility ${Math.round(avgRead*100)}% | ${frames} planned samples | ${processed} pose reads | ${valid} usable` +
+     (poseErrors?` | ${poseErrors} pose timeouts/errors`:'') +
+     (seekSkips?` | ${seekSkips} seek failures`:'') + '.';
+
+   const minReliableReads=Math.max(12,Math.ceil(frames*.25));
+   if(processed<minReliableReads){
+     checkpoint.updatedAt=Date.now();
+     checkpoint.failed=true;
+     checkpoint.processed=processed;
+     checkpoint.poseErrors=poseErrors;
+     checkpoint.seekSkips=seekSkips;
+     saveReviewCheckpoint(checkpoint);
+     statusEl.textContent=
+       `Insufficient sample coverage: ${processed} of ${frames} planned samples produced pose reads. ` +
+       `Stroke Lab will not generate a score from fewer than ${minReliableReads} reads.`;
+     document.getElementById('resultCard').classList.add('hidden');
+     return;
+   }
 
    const strokeResults=strokes.map(stroke=>{
-     const best=bestByStroke[stroke];
-     if(!best)return {stroke,score:null,rows:[],readable:false};
-     const score=Math.round(best.s.score*Math.min(1,Math.max(.68,avgRead+.08)));
-     return {stroke,score,rows:best.s.rows,readable:true,t:best.t,has3D:best.m.has3D};
+     const samples=samplesByStroke[stroke]||[];
+     if(!samples.length)return {stroke,score:null,rows:[],readable:false};
+
+     // Use the strongest representative quartile rather than one cherry-picked frame.
+     // This better approximates a stroke phase while resisting single-frame inflation.
+     const ranked=[...samples].sort((a,b)=>b.s.score-a.s.score);
+     const keepCount=Math.max(3,Math.ceil(ranked.length*.25));
+     const representative=ranked.slice(0,Math.min(keepCount,ranked.length));
+     const rawMedian=median(representative.map(x=>x.s.score))||0;
+
+     // Coverage/reliability penalty: sparse reads cannot earn elite scores.
+     const targetReads=Math.max(24,Math.ceil(frames*.35));
+     const coverage=Math.min(1,samples.length/targetReads);
+     const reliabilityFactor=.72+.28*coverage;
+     const score=Math.round(rawMedian*reliabilityFactor*Math.min(1,Math.max(.75,avgRead+.05)));
+
+     const rowKeys=[...new Set(representative.flatMap(x=>x.s.rows.map(r=>r.key)))];
+     const rows=rowKeys.map(key=>{
+       const vals=representative.flatMap(x=>x.s.rows.filter(r=>r.key===key));
+       const first=vals[0];
+       return {key,label:first?.label||key,score:Math.round(median(vals.map(v=>v.score))||0)};
+     });
+
+     const best=ranked[0];
+     return {stroke,score,rows,readable:true,t:best.t,has3D:best.m.has3D,sampleCount:samples.length};
    });
    const readable=strokeResults.filter(r=>r.readable);
 
@@ -815,7 +878,7 @@ analyzeBtn.onclick=async()=>{
        wctx.drawImage(video,0,0,work.width,work.height);
        const poses=await Promise.race([
          detector.estimatePoses(work),
-         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),4500))
+         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),10000))
        ]);
        if(poses?.length)drawPose(mapKP(poses[0].keypoints));
      }catch(e){console.warn(e)}
@@ -835,8 +898,9 @@ analyzeBtn.onclick=async()=>{
    checkpoint.complete=true;checkpoint.processed=frames;checkpoint.updatedAt=Date.now();checkpoint.preliminaryScore=score;
    saveReviewCheckpoint(checkpoint);
    statusEl.textContent=
-     `Review complete and saved automatically. ${processed} frames read` +
-     (seekSkips?`, ${seekSkips} slow frame${seekSkips===1?'':'s'} skipped without stopping the session`:'') + '.';
+     `Review complete and saved automatically. ${processed} of ${frames} planned samples produced pose reads` +
+     (poseErrors?`, ${poseErrors} pose timeouts/errors`:'') +
+     (seekSkips?`, ${seekSkips} seek failures`:'') + '.';
    document.getElementById('saveSessionBtn').classList.add('hidden');
  }finally{
    await releaseReviewWakeLock();
@@ -849,7 +913,7 @@ analyzeBtn.onclick=async()=>{
 function renderResult(r){
  document.getElementById('resultCard').classList.remove('hidden');
  document.getElementById('scoreBig').textContent=r.score;
- document.getElementById('scoreCaption').textContent=r.score>=85?'Strong session. Keep building consistency.':r.score>=70?'Useful work. A few areas stand out.':'Good film to learn from. Focus on one or two changes.';
+ document.getElementById('scoreCaption').textContent=r.score>=85?'Strong pose mechanics in the readable stroke phases.':r.score>=70?'Solid base with identifiable improvement areas.':'Useful film for identifying one or two priority changes.';
  const wrap=document.getElementById('resultMetrics');
  wrap.innerHTML=r.results.map(sr=>{
    if(!sr.readable)return `<div class="note-item"><strong>${cap(sr.stroke)}</strong><div class="sub">Not enough reliable body data to score this stroke from this clip.</div></div>`;
