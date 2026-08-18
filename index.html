@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V3.7</title>
+<title>Stroke Lab V3.8</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -791,7 +791,7 @@ function renderResult(r){
  const firstReadable=r.results.find(x=>x.readable);
  document.getElementById('liveMetrics').innerHTML=firstReadable?firstReadable.rows.map(x=>`<div class="metric"><span>${x.label}</span><div class="bar"><i style="width:${x.score}%"></i></div><strong>${x.score}</strong></div>`).join(''):'';
 }
-document.getElementById('saveSessionBtn').onclick=()=>{if(!lastResult)return;const p=activeProfile();p.sessions=p.sessions||[];p.sessions.push(lastResult);saveState();renderProgress();statusEl.textContent='Saved to this player's history.'};
+document.getElementById('saveSessionBtn').onclick=()=>{if(!lastResult)return;const p=activeProfile();p.sessions=p.sessions||[];p.sessions.push(lastResult);saveState();renderProgress();statusEl.textContent="Saved to this player\'s history."};
 
 // initial render
 renderAll();
