@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V4.1</title>
+<title>Stroke Lab V4.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -623,7 +623,7 @@ function scoreOne(m,stroke){
    const mid=(r.range[0]+r.range[1])/2;
    const half=Math.max(.0001,(r.range[1]-r.range[0])/2);
    const normalized=Math.abs(r.v-mid)/half;
-   // Calibrated curve: midpoint=100, target-range edgeâ80, 2x half-rangeâ41.
+   // Calibrated curve: midpoint=100, target-range edge≈80, 2x half-range≈41.
    const s=Math.exp(-0.223*normalized*normalized);
    r.score=Math.round(Math.max(0,Math.min(1,s))*100);
    sum+=s;n++;
@@ -713,7 +713,7 @@ analyzeBtn.onclick=async()=>{
  progressFill.style.width='0%';
  document.getElementById('resultCard').classList.add('hidden');
 
- const maxAnalysisSide=640;
+ const maxAnalysisSide=480;
  const vw=video.videoWidth||640,vh=video.videoHeight||360;
  const scale=Math.min(1,maxAnalysisSide/Math.max(vw,vh));
  work.width=Math.max(1,Math.round(vw*scale));
@@ -768,7 +768,7 @@ analyzeBtn.onclick=async()=>{
        wctx.drawImage(video,0,0,work.width,work.height);
        const poses=await Promise.race([
          detector.estimatePoses(work),
-         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Pose read timed out')),10000))
+         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Pose read timed out')),14000))
        ]);
        if(analysisCancelled) break;
        if(poses?.length){
@@ -838,28 +838,24 @@ analyzeBtn.onclick=async()=>{
      const samples=samplesByStroke[stroke]||[];
      if(!samples.length)return {stroke,score:null,rows:[],readable:false};
 
-     // Use the strongest representative quartile rather than one cherry-picked frame.
-     // This better approximates a stroke phase while resisting single-frame inflation.
-     const ranked=[...samples].sort((a,b)=>b.s.score-a.s.score);
-     const keepCount=Math.max(3,Math.ceil(ranked.length*.25));
-     const representative=ranked.slice(0,Math.min(keepCount,ranked.length));
-     const rawMedian=median(representative.map(x=>x.s.score))||0;
+     const rawMedian=median(samples.map(x=>x.s.score))||0;
+     const readCoverage=Math.min(1,processed/frames);
+     const confidenceCap=Math.round(68 + 32*readCoverage);
+     const visibilityFactor=Math.min(1,Math.max(.78,avgRead+.02));
+     let score=Math.round(rawMedian*visibilityFactor);
+     score=Math.min(score,confidenceCap);
 
-     // Coverage/reliability penalty: sparse reads cannot earn elite scores.
-     const targetReads=Math.max(24,Math.ceil(frames*.35));
-     const coverage=Math.min(1,samples.length/targetReads);
-     const reliabilityFactor=.72+.28*coverage;
-     const score=Math.round(rawMedian*reliabilityFactor*Math.min(1,Math.max(.75,avgRead+.05)));
-
-     const rowKeys=[...new Set(representative.flatMap(x=>x.s.rows.map(r=>r.key)))];
+     const rowKeys=[...new Set(samples.flatMap(x=>x.s.rows.map(r=>r.key)))];
      const rows=rowKeys.map(key=>{
-       const vals=representative.flatMap(x=>x.s.rows.filter(r=>r.key===key));
+       const vals=samples.flatMap(x=>x.s.rows.filter(r=>r.key===key));
        const first=vals[0];
-       return {key,label:first?.label||key,score:Math.round(median(vals.map(v=>v.score))||0)};
+       let metricScore=Math.round(median(vals.map(v=>v.score))||0);
+       metricScore=Math.min(metricScore,confidenceCap+5);
+       return {key,label:first?.label||key,score:metricScore};
      });
 
-     const best=ranked[0];
-     return {stroke,score,rows,readable:true,t:best.t,has3D:best.m.has3D,sampleCount:samples.length};
+     const representative=[...samples].sort((a,b)=>Math.abs(a.s.score-rawMedian)-Math.abs(b.s.score-rawMedian))[0];
+     return {stroke,score,rows,readable:true,t:representative.t,has3D:representative.m.has3D,sampleCount:samples.length,confidenceCap,readCoverage};
    });
    const readable=strokeResults.filter(r=>r.readable);
 
@@ -878,7 +874,7 @@ analyzeBtn.onclick=async()=>{
        wctx.drawImage(video,0,0,work.width,work.height);
        const poses=await Promise.race([
          detector.estimatePoses(work),
-         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),10000))
+         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),14000))
        ]);
        if(poses?.length)drawPose(mapKP(poses[0].keypoints));
      }catch(e){console.warn(e)}
@@ -913,7 +909,9 @@ analyzeBtn.onclick=async()=>{
 function renderResult(r){
  document.getElementById('resultCard').classList.remove('hidden');
  document.getElementById('scoreBig').textContent=r.score;
- document.getElementById('scoreCaption').textContent=r.score>=85?'Strong pose mechanics in the readable stroke phases.':r.score>=70?'Solid base with identifiable improvement areas.':'Useful film for identifying one or two priority changes.';
+ const cov=r.diagnostics?.frames?Math.round((r.diagnostics.processed/r.diagnostics.frames)*100):0;
+ document.getElementById('scoreCaption').textContent=`Pose-only estimate based on ${cov}% sample coverage. ` +
+ (r.score>=85?'Strong mechanics in the readable phases.':r.score>=70?'Solid base with identifiable improvement areas.':'Useful film for identifying priority changes.');
  const wrap=document.getElementById('resultMetrics');
  wrap.innerHTML=r.results.map(sr=>{
    if(!sr.readable)return `<div class="note-item"><strong>${cap(sr.stroke)}</strong><div class="sub">Not enough reliable body data to score this stroke from this clip.</div></div>`;
