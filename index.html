@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V4.3</title>
+<title>Stroke Lab V4.4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -317,7 +317,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V4.3 | local-first family beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V4.4 | local-first family beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -466,7 +466,7 @@ document.addEventListener('visibilitychange',()=>{
 // ---------------- Pose analysis ----------------
 const video=document.getElementById('video'), overlay=document.getElementById('overlay'), analyzeBtn=document.getElementById('analyzeBtn'), statusEl=document.getElementById('status');
 const progressTrack=document.getElementById('progressTrack'),progressFill=document.getElementById('progressFill');
-let detector=null,modelReady=false,videoLoaded=false,selectedStrokes=new Set(['forehand']),dominantHand='left',lastResult=null;
+let detector=null,fallbackDetector=null,fallbackDetectorPromise=null,modelReady=false,videoLoaded=false,selectedStrokes=new Set(['forehand']),dominantHand='left',lastResult=null;
 const work=document.createElement('canvas'),wctx=work.getContext('2d');
 function refreshStrokeButtons(){
  const allSelected=['forehand','backhand','serve'].every(s=>selectedStrokes.has(s));
@@ -582,6 +582,76 @@ async function initModel(){
 }
 initModel();
 window.addEventListener('online',()=>{if(!modelReady)initModel()});
+
+
+async function getFallbackDetector(){
+  if(fallbackDetector)return fallbackDetector;
+  if(fallbackDetectorPromise)return fallbackDetectorPromise;
+  fallbackDetectorPromise=(async()=>{
+    fallbackDetector=await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      {modelType:poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING}
+    );
+    return fallbackDetector;
+  })().catch(e=>{
+    fallbackDetectorPromise=null;
+    throw e;
+  });
+  return fallbackDetectorPromise;
+}
+async function estimateWithTimeout(det,source,timeoutMs,label){
+  return await Promise.race([
+    det.estimatePoses(source),
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' timed out')),timeoutMs))
+  ]);
+}
+async function readPoseFromCurrentFrame(diag){
+  // The frame is already decoded and copied to the canvas. Keep retrying that
+  // exact image instead of advancing the video and throwing the sample away.
+  diag.primaryAttempts++;
+  try{
+    let poses=await estimateWithTimeout(detector,work,14000,'Primary pose read');
+    if(poses?.length){
+      diag.primarySuccess++;
+      return {pose:poses[0],source:'primary'};
+    }
+    diag.emptyPrimary++;
+  }catch(e){
+    diag.primaryErrors++;
+    console.warn('Primary pose attempt failed:',e);
+  }
+
+  // Same decoded frame, second primary pass. This costs inference time, not another seek/decode.
+  diag.primaryRetries++;
+  try{
+    await sleep(120);
+    let poses=await estimateWithTimeout(detector,work,14000,'Primary pose retry');
+    if(poses?.length){
+      diag.retrySuccess++;
+      return {pose:poses[0],source:'retry'};
+    }
+    diag.emptyRetry++;
+  }catch(e){
+    diag.retryErrors++;
+    console.warn('Primary pose retry failed:',e);
+  }
+
+  // Last resort on the SAME image: a lighter 2D MoveNet read.
+  diag.fallbackAttempts++;
+  try{
+    const fd=await getFallbackDetector();
+    const poses=await estimateWithTimeout(fd,work,9000,'Fallback pose read');
+    if(poses?.length){
+      diag.fallbackSuccess++;
+      return {pose:poses[0],source:'fallback'};
+    }
+    diag.emptyFallback++;
+  }catch(e){
+    diag.fallbackErrors++;
+    console.warn('Fallback pose read failed:',e);
+  }
+  return null;
+}
 
 const targets={
  forehand:{frontKnee:[125,165],elbow:[140,180],stance:[1.1,2.2]},
@@ -721,11 +791,17 @@ analyzeBtn.onclick=async()=>{
  const resetOK=await resetVideoToStart();
  if(!resetOK){statusEl.textContent='Could not prepare the video decoder. Reload the clip and try again.';return}
  let bestByStroke={},valid=0,readability=0,angles={},decodeMisses=0,poseErrors=0,processed=0;
+ const diag={
+   decodedFrames:0,
+   primaryAttempts:0,primarySuccess:0,primaryErrors:0,emptyPrimary:0,
+   primaryRetries:0,retrySuccess:0,retryErrors:0,emptyRetry:0,
+   fallbackAttempts:0,fallbackSuccess:0,fallbackErrors:0,emptyFallback:0
+ };
  const samplesByStroke=Object.fromEntries(strokes.map(s=>[s,[]]));
  let checkpoint={
    id:'review-'+Date.now(),profileId:p?.id||null,profileName:p?.name||'Player',
    strokes,startedAt:Date.now(),updatedAt:Date.now(),complete:false,
-   frames,processed:0,valid:0,seekSkips:0,decodeMisses:0,poseErrors:0,preliminaryScore:null
+   frames,processed:0,valid:0,seekSkips:0,decodeMisses:0,poseErrors:0,diagnostics:null,preliminaryScore:null
  };
  saveReviewCheckpoint(checkpoint);
 
@@ -742,20 +818,18 @@ analyzeBtn.onclick=async()=>{
        decodeMisses++;
        progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
        statusEl.textContent=`Decoder missed sample ${i+1}. Continuing forward without resetting the video...`;
-       checkpoint.processed=processed;checkpoint.valid=valid;checkpoint.decodeMisses=decodeMisses;checkpoint.seekSkips=decodeMisses;checkpoint.poseErrors=poseErrors;checkpoint.updatedAt=Date.now();saveReviewCheckpoint(checkpoint);
+       checkpoint.processed=processed;checkpoint.valid=valid;checkpoint.decodeMisses=decodeMisses;checkpoint.seekSkips=decodeMisses;checkpoint.poseErrors=poseErrors;checkpoint.diagnostics={...diag};checkpoint.updatedAt=Date.now();saveReviewCheckpoint(checkpoint);
        await new Promise(r=>setTimeout(r,0));continue;
      }
      statusEl.textContent=`Reading body position ${i+1} of ${frames}...`;
      try{
        wctx.drawImage(video,0,0,work.width,work.height);
-       const poses=await Promise.race([
-         detector.estimatePoses(work),
-         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Pose read timed out')),14000))
-       ]);
+       diag.decodedFrames++;
+       const poseRead=await readPoseFromCurrentFrame(diag);
        if(analysisCancelled) break;
-       if(poses?.length){
+       if(poseRead?.pose){
          processed++;
-         const m=metricsFromPose(poses[0]);
+         const m=metricsFromPose(poseRead.pose);
          readability+=m.readablePct;
          angles[m.angleLabel]=(angles[m.angleLabel]||0)+1;
          let frameUsable=false;
@@ -763,17 +837,19 @@ analyzeBtn.onclick=async()=>{
            const s=scoreOne(m,stroke);
            if(s.rows.length>=2){
              frameUsable=true;
-             samplesByStroke[stroke].push({m,s,t:video.currentTime});
+             samplesByStroke[stroke].push({m,s,t:video.currentTime,source:poseRead.source});
              if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score){
-               bestByStroke[stroke]={m,s,t:video.currentTime};
+               bestByStroke[stroke]={m,s,t:video.currentTime,source:poseRead.source};
              }
            }
          });
          if(frameUsable)valid++;
+       }else{
+         poseErrors++;
        }
      }catch(e){
        poseErrors++;
-       console.warn('Pose sample skipped:',e);
+       console.warn('Pose sample failed after retry/fallback:',e);
      }
 
      progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
@@ -796,10 +872,12 @@ analyzeBtn.onclick=async()=>{
    const avgRead=readability/denom;
    const angleLabel=Object.entries(angles).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Unclear camera angle';
    document.getElementById('angleRead').textContent=angleLabel;
+   const rescued=diag.retrySuccess+diag.fallbackSuccess;
    document.getElementById('visibilityRead').textContent=
-     `Body visibility ${Math.round(avgRead*100)}% | ${frames} planned samples | ${processed} pose reads | ${valid} usable` +
-     (poseErrors?` | ${poseErrors} pose timeouts/errors`:'') +
-     (decodeMisses?` | ${decodeMisses} decode misses`:'') + '.';
+     `Body visibility ${Math.round(avgRead*100)}% | ${frames} planned | ${diag.decodedFrames} decoded | ${processed} pose reads | ${valid} usable` +
+     (rescued?` | ${rescued} rescued by retry/fallback`:'') +
+     (decodeMisses?` | ${decodeMisses} decode misses`:'') +
+     (poseErrors?` | ${poseErrors} pose failures after all attempts`:'') + '.';
 
    const minReliableReads=Math.max(12,Math.ceil(frames*.25));
    if(processed<minReliableReads){
@@ -807,7 +885,7 @@ analyzeBtn.onclick=async()=>{
      checkpoint.failed=true;
      checkpoint.processed=processed;
      checkpoint.poseErrors=poseErrors;
-     checkpoint.seekSkips=decodeMisses;checkpoint.decodeMisses=decodeMisses;
+     checkpoint.seekSkips=decodeMisses;checkpoint.decodeMisses=decodeMisses;checkpoint.diagnostics={...diag};
      saveReviewCheckpoint(checkpoint);
      statusEl.textContent=
        `Insufficient sample coverage: ${processed} of ${frames} planned samples produced pose reads. ` +
@@ -852,17 +930,19 @@ analyzeBtn.onclick=async()=>{
    statusEl.textContent='Preparing representative frame...';
    try{
      wctx.drawImage(video,0,0,work.width,work.height);
-     const poses=await Promise.race([
-       detector.estimatePoses(work),
-       new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),14000))
-     ]);
-     if(poses?.length)drawPose(mapKP(poses[0].keypoints));
+     const finalDiag={
+       primaryAttempts:0,primarySuccess:0,primaryErrors:0,emptyPrimary:0,
+       primaryRetries:0,retrySuccess:0,retryErrors:0,emptyRetry:0,
+       fallbackAttempts:0,fallbackSuccess:0,fallbackErrors:0,emptyFallback:0
+     };
+     const poseRead=await readPoseFromCurrentFrame(finalDiag);
+     if(poseRead?.pose)drawPose(mapKP(poseRead.pose.keypoints));
    }catch(e){console.warn(e)}
    const score=Math.round(readable.reduce((a,r)=>a+r.score,0)/readable.length);
    lastResult={
      score,strokes,ts:Date.now(),angleLabel,visibility:avgRead,
      results:strokeResults,has3D:readable.some(r=>r.has3D),
-     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors},autoSaved:true,reviewId:checkpoint.id
+     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors,...diag},autoSaved:true,reviewId:checkpoint.id
    };
    renderResult(lastResult);
    if(p){
@@ -871,9 +951,11 @@ analyzeBtn.onclick=async()=>{
    }
    checkpoint.complete=true;checkpoint.processed=processed;checkpoint.updatedAt=Date.now();checkpoint.preliminaryScore=score;
    saveReviewCheckpoint(checkpoint);
+   const rescuedReads=diag.retrySuccess+diag.fallbackSuccess;
    statusEl.textContent=
      `Review complete and saved automatically. ${processed} of ${frames} planned samples produced pose reads` +
-     (poseErrors?`, ${poseErrors} pose timeouts/errors`:'') +
+     (rescuedReads?`, ${rescuedReads} recovered by retry/fallback`:'') +
+     (poseErrors?`, ${poseErrors} pose failures after all attempts`:'') +
      (decodeMisses?`, ${decodeMisses} decode misses`:'') + '.';
    document.getElementById('saveSessionBtn').classList.add('hidden');
  }finally{
@@ -897,6 +979,12 @@ function renderResult(r){
    return `<div class="note-item" style="margin-bottom:10px"><div class="row between"><strong>${cap(sr.stroke)}</strong><strong style="color:var(--lime)">${sr.score}/100</strong></div><div class="metric-list" style="margin-top:10px">${metrics}</div></div>`;
  }).join('');
  const notes=[];notes.push({c:'good',t:`Camera read: ${r.angleLabel}. ${r.has3D?'3D body landmarks were available.':'2D pose fallback was used.'}`});
+ const d=r.diagnostics||{};
+ const rescued=(d.retrySuccess||0)+(d.fallbackSuccess||0);
+ notes.push({c:rescued?'good':'',t:
+   `Analysis pipeline: ${d.decodedFrames??'—'} decoded frames, ${d.processed??'—'} successful pose reads` +
+   (rescued?`, including ${rescued} samples recovered by retry/fallback.`:'.')
+ });
  if(r.visibility<.72)notes.push({c:'bad',t:'Some body landmarks were not consistently visible. Measurements affected by occlusion or cropping were excluded rather than guessed.'});
  else notes.push({c:'good',t:'Most major body landmarks were readable across the clip.'});
  const missed=r.results.filter(x=>!x.readable).map(x=>cap(x.stroke));
