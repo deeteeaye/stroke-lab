@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V5.1</title>
+<title>Stroke Lab V5.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -416,7 +416,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V5.1 | mechanics-first development beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V5.2 | serve-aware mechanics beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -838,6 +838,45 @@ async function estimateWithTimeout(det,source,timeoutMs,label){
     new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' timed out')),timeoutMs))
   ]);
 }
+let playerLock=null;
+function poseBox(pose){
+ const pts=(pose?.keypoints||[]).filter(k=>ok(k,.22));
+ if(pts.length<6)return null;
+ const xs=pts.map(k=>k.x),ys=pts.map(k=>k.y);
+ const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+ return {x0,y0,x1,y1,w:x1-x0,h:y1-y0,cx:(x0+x1)/2,cy:(y0+y1)/2};
+}
+function humanPoseQuality(pose){
+ const k=mapKP(pose?.keypoints), b=poseBox(pose);
+ if(!b||b.w<work.width*.025||b.h<work.height*.10)return {ok:false,q:0,reason:'tiny'};
+ const core=['left_shoulder','right_shoulder','left_hip','right_hip','left_knee','right_knee'];
+ const coreN=core.filter(n=>ok(k[n],.22)).length;
+ const limbN=['left_elbow','right_elbow','left_wrist','right_wrist','left_ankle','right_ankle'].filter(n=>ok(k[n],.18)).length;
+ let q=(coreN/6)*.65+(limbN/6)*.25;
+ if(ok(k.left_shoulder,.18)&&ok(k.right_shoulder,.18)&&ok(k.left_hip,.18)&&ok(k.right_hip,.18)){
+   const sy=(k.left_shoulder.y+k.right_shoulder.y)/2,hy=(k.left_hip.y+k.right_hip.y)/2;
+   if(hy>sy)q+=.10; else q-=.20;
+ }
+ if(playerLock){
+   const d=Math.hypot(b.cx-playerLock.cx,b.cy-playerLock.cy);
+   const scale=Math.max(playerLock.h,playerLock.w,40);
+   if(d<scale*.9)q+=.15; else if(d>scale*2.2)q-=.35;
+   const ratio=b.h/Math.max(playerLock.h,1);
+   if(ratio<.35||ratio>2.8)q-=.30;
+ }
+ return {ok:q>=.52,q,b,reason:q>=.52?'human':'implausible'};
+}
+function chooseHumanPose(poses,diag){
+ let best=null;
+ (poses||[]).forEach(p=>{const v=humanPoseQuality(p);if(v.ok&&(!best||v.q>best.v.q))best={p,v}});
+ if(!best){diag.identityRejects=(diag.identityRejects||0)+1;return null}
+ const b=best.v.b;
+ if(!playerLock)playerLock={...b}; else {
+   const a=.18; playerLock={x0:b.x0,y0:b.y0,x1:b.x1,y1:b.y1,w:b.w,h:b.h,cx:playerLock.cx*(1-a)+b.cx*a,cy:playerLock.cy*(1-a)+b.cy*a};
+ }
+ return best.p;
+}
+
 async function readPoseFromCurrentFrame(diag){
   // The frame is already decoded and copied to the canvas. Keep retrying that
   // exact image instead of advancing the video and throwing the sample away.
@@ -846,7 +885,7 @@ async function readPoseFromCurrentFrame(diag){
     let poses=await estimateWithTimeout(detector,work,14000,'Primary pose read');
     if(poses?.length){
       diag.primarySuccess++;
-      return {pose:poses[0],source:'primary'};
+      const hp=chooseHumanPose(poses,diag);if(hp)return {pose:hp,source:'primary'};
     }
     diag.emptyPrimary++;
   }catch(e){
@@ -861,7 +900,7 @@ async function readPoseFromCurrentFrame(diag){
     let poses=await estimateWithTimeout(detector,work,14000,'Primary pose retry');
     if(poses?.length){
       diag.retrySuccess++;
-      return {pose:poses[0],source:'retry'};
+      const hp=chooseHumanPose(poses,diag);if(hp)return {pose:hp,source:'retry'};
     }
     diag.emptyRetry++;
   }catch(e){
@@ -876,7 +915,7 @@ async function readPoseFromCurrentFrame(diag){
     const poses=await estimateWithTimeout(fd,work,9000,'Fallback pose read');
     if(poses?.length){
       diag.fallbackSuccess++;
-      return {pose:poses[0],source:'fallback'};
+      const hp=chooseHumanPose(poses,diag);if(hp)return {pose:hp,source:'fallback'};
     }
     diag.emptyFallback++;
   }catch(e){
@@ -914,8 +953,22 @@ function metricsFromPose(pose){
  const reach=ok(k[`${side}_wrist`])&&torso&&ok(hipL)&&ok(hipR)?dist(k[`${side}_wrist`],{x:(hipL.x+hipR.x)/2,y:(hipL.y+hipR.y)/2})/torso:null;
  return {frontKnee,backKnee,elbow,stance,reach,readablePct:readable/total,angleLabel,has3D:!!k3,kp:k};
 }
+function servePhase(m){
+ const k=m.kp||{},side=dominantHand==='left'?'left':'right';
+ const w=k[side+'_wrist'],sh=k[side+'_shoulder'],hip=k[side+'_hip'];
+ if(ok(w,.20)&&ok(sh,.20)&&w.y<sh.y)return 'upward-extension';
+ if(m.frontKnee!=null&&m.frontKnee<145)return 'load';
+ if(ok(w,.20)&&ok(hip,.20)&&w.y<hip.y)return 'trophy';
+ return 'setup-recovery';
+}
 function scoreOne(m,stroke){
- const t=targets[stroke];const rows=[
+ const t=targets[stroke];
+ const phase=stroke==='serve'?servePhase(m):null;
+ const rows=stroke==='serve'?[
+  {key:'frontKnee',label:'Leg load',v:(phase==='load'||phase==='trophy')?m.frontKnee:null,range:t.frontKnee,phase},
+  {key:'elbow',label:'Upward arm extension',v:(phase==='upward-extension'||phase==='trophy')?m.elbow:null,range:t.elbow,phase},
+  {key:'stance',label:'Setup / landing balance',v:phase==='setup-recovery'?m.stance:null,range:t.stance,phase}
+ ]:[
   {key:'frontKnee',label:'Front knee bend',v:m.frontKnee,range:t.frontKnee},
   {key:'elbow',label:'Hitting-arm extension',v:m.elbow,range:t.elbow},
   {key:'stance',label:'Stance / base',v:m.stance,range:t.stance}
@@ -993,6 +1046,7 @@ function chooseGoldenMoments(list){const best={};list.forEach(g=>{const k=g.stro
 function renderGoldenGallery(){const p=activeProfile(),el=document.getElementById('goldenGallery');if(!el)return;const ms=(p?.goldenMoments||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));if(!ms.length){el.innerHTML='<div class="span12 sub">No Golden Moments yet. A frame is saved only when a specific mechanic scores 90+ with strong visibility.</div>';return}el.innerHTML=ms.slice(0,18).map(g=>`<div class="card golden-card span4"><img class="golden-img" src="${g.image}"><div style="margin-top:9px"><span class="golden-badge">${esc(g.metric)} ${g.metricScore}</span></div><h3 style="margin:8px 0 4px">${cap(g.stroke)}</h3><div class="sub">${esc(g.cue)}</div><div class="sub" style="margin-top:6px">${new Date(g.ts).toLocaleDateString()} | ${esc(g.angleLabel||'camera view')}</div></div>`).join('')}
 
 analyzeBtn.onclick=async()=>{
+ playerLock=null;
  const p=activeProfile();if(p)dominantHand=p.hand;
  await acquireReviewWakeLock();
  const strokes=[...selectedStrokes];
@@ -1123,7 +1177,7 @@ analyzeBtn.onclick=async()=>{
      `Body visibility ${Math.round(avgRead*100)}% | ${frames} planned | ${diag.decodedFrames} decoded | ${processed} pose reads | ${valid} usable` +
      (rescued?` | ${rescued} rescued by retry/fallback`:'') +
      (decodeMisses?` | ${decodeMisses} decode misses`:'') +
-     (poseErrors?` | ${poseErrors} pose failures after all attempts`:'') + '.';
+     (poseErrors?` | ${poseErrors} excluded/rejected reads`:'') + '.';
 
    const minReliableReads=Math.max(12,Math.ceil(frames*.25));
    if(processed<minReliableReads){
@@ -1207,7 +1261,7 @@ analyzeBtn.onclick=async()=>{
    statusEl.textContent=
      `Review complete and saved automatically. ${processed} of ${frames} planned samples produced pose reads` +
      (rescuedReads?`, ${rescuedReads} recovered by retry/fallback`:'') +
-     (poseErrors?`, ${poseErrors} pose failures after all attempts`:'') +
+     (poseErrors?`, ${poseErrors} excluded/rejected reads`:'') +
      (decodeMisses?`, ${decodeMisses} decode misses`:'') + '.';
    document.getElementById('saveSessionBtn').classList.add('hidden');
  }finally{
@@ -1348,7 +1402,7 @@ function renderResult(r){
  const d=r.diagnostics||{};
  const rescued=(d.retrySuccess||0)+(d.fallbackSuccess||0);
  notes.push({c:rescued?'good':'',t:
-   `Analysis pipeline: ${d.decodedFrames??'—'} decoded frames, ${d.processed??'—'} successful pose reads` +
+   `Analysis pipeline: ${d.decodedFrames??'—'} decoded frames, ${d.processed??'—'} human pose reads` +
    (rescued?`, including ${rescued} samples recovered by retry/fallback.`:'.')
  });
  if(r.visibility<.72)notes.push({c:'bad',t:'Some body landmarks were not consistently visible. Measurements affected by occlusion or cropping were excluded rather than guessed.'});
