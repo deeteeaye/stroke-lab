@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V5.0</title>
+<title>Stroke Lab V5.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -172,7 +172,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
 .mini-trend i{flex:1;background:var(--lime);border-radius:4px 4px 1px 1px;min-width:5px;opacity:.88}
 .outcome-box{border:1px solid var(--line);border-radius:14px;padding:12px;background:#0d100e}
 
-</style>
+.golden-img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;border:1px solid var(--line)}.golden-badge{display:inline-block;padding:4px 8px;border-radius:999px;background:var(--lime);color:#0a0d0a;font-size:10px;font-weight:900}.golden-card{border:1px solid #3b472b;background:#0c100b}</style>
 </head>
 <body>
 <div class="app">
@@ -412,10 +412,11 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
         <h2>Session history</h2>
         <div class="notes-list" id="historyList"></div>
       </div>
+      <div class="card span12"><div class="eyebrow">My Best Form</div><h2>Golden Moments</h2><p class="sub">Personal-best frames saved by specific mechanic.</p><div id="goldenGallery" class="grid" style="margin-top:10px"></div></div>
     </div>
   </section>
 
-  <footer>Stroke Lab V5.0 | mechanics-first development beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V5.1 | mechanics-first development beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -623,7 +624,7 @@ function renderProgress(){
     </details>`;
   }).join('');
 }
-function renderAll(){renderProfiles();renderNotes();renderProgress();renderDevelopmentHome();const p=activeProfile();if(p)dominantHand=p.hand}
+function renderAll(){renderProfiles();renderNotes();renderProgress();renderGoldenGallery();renderDevelopmentHome();const p=activeProfile();if(p){dominantHand=p.hand;p.goldenMoments=p.goldenMoments||[]}}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function cap(s){return s? s[0].toUpperCase()+s.slice(1):''}
 function fileToData(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
@@ -985,6 +986,12 @@ function drawPose(k){
 let analysisCancelled=false;
 const cancelAnalysisBtn=document.getElementById('cancelAnalysisBtn');
 cancelAnalysisBtn.onclick=()=>{analysisCancelled=true;statusEl.textContent='Stopping review...'};
+function goldenMetricLabel(k){return {frontKnee:'Knee load',elbow:'Contact spacing / extension',stance:'Athletic base'}[k]||k}
+function goldenCue(k){return {frontKnee:'Recreate this leg load and stay down through the hitting zone.',elbow:'Recreate this spacing and extension through the hitting zone.',stance:'Recreate this balanced base and body position.'}[k]||'Recreate this body position.'}
+function captureGoldenFrame(stroke,m,s,t,source){if((m.readablePct||0)<.82)return;const rows=(s.rows||[]).filter(r=>(r.score||0)>=90);if(!rows.length)return;let image='';try{image=work.toDataURL('image/jpeg',.70)}catch(e){return}rows.forEach(r=>goldenCandidates.push({id:uid(),stroke,metricKey:r.key,metric:goldenMetricLabel(r.key),metricScore:r.score,frameScore:s.score,t,source,image,cue:goldenCue(r.key),visibility:m.readablePct}))}
+function chooseGoldenMoments(list){const best={};list.forEach(g=>{const k=g.stroke+':'+g.metricKey;if(!best[k]||g.metricScore>best[k].metricScore||(g.metricScore===best[k].metricScore&&g.frameScore>best[k].frameScore))best[k]=g});return Object.values(best)}
+function renderGoldenGallery(){const p=activeProfile(),el=document.getElementById('goldenGallery');if(!el)return;const ms=(p?.goldenMoments||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));if(!ms.length){el.innerHTML='<div class="span12 sub">No Golden Moments yet. A frame is saved only when a specific mechanic scores 90+ with strong visibility.</div>';return}el.innerHTML=ms.slice(0,18).map(g=>`<div class="card golden-card span4"><img class="golden-img" src="${g.image}"><div style="margin-top:9px"><span class="golden-badge">${esc(g.metric)} ${g.metricScore}</span></div><h3 style="margin:8px 0 4px">${cap(g.stroke)}</h3><div class="sub">${esc(g.cue)}</div><div class="sub" style="margin-top:6px">${new Date(g.ts).toLocaleDateString()} | ${esc(g.angleLabel||'camera view')}</div></div>`).join('')}
+
 analyzeBtn.onclick=async()=>{
  const p=activeProfile();if(p)dominantHand=p.hand;
  await acquireReviewWakeLock();
@@ -1033,6 +1040,7 @@ analyzeBtn.onclick=async()=>{
    fallbackAttempts:0,fallbackSuccess:0,fallbackErrors:0,emptyFallback:0
  };
  const samplesByStroke=Object.fromEntries(strokes.map(s=>[s,[]]));
+ const goldenCandidates=[];
  let checkpoint={
    id:'review-'+Date.now(),profileId:p?.id||null,profileName:p?.name||'Player',
    strokes,startedAt:Date.now(),updatedAt:Date.now(),complete:false,
@@ -1073,6 +1081,7 @@ analyzeBtn.onclick=async()=>{
            if(s.rows.length>=2){
              frameUsable=true;
              samplesByStroke[stroke].push({m,s,t:video.currentTime,source:poseRead.source});
+             captureGoldenFrame(stroke,m,s,video.currentTime,poseRead.source);
              if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score){
                bestByStroke[stroke]={m,s,t:video.currentTime,source:poseRead.source};
              }
@@ -1179,12 +1188,18 @@ analyzeBtn.onclick=async()=>{
    lastResult={
      score,strokes,ts:Date.now(),angleLabel,detectedAngleLabel,requestedAngle,sessionMode,outcomePattern:outcomePatternValue,visibility:avgRead,
      results:strokeResults,has3D:readable.some(r=>r.has3D),
-     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors,...diag},autoSaved:true,reviewId:checkpoint.id
+     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors,...diag},goldenMoments:chooseGoldenMoments(goldenCandidates),autoSaved:true,reviewId:checkpoint.id
    };
    renderResult(lastResult);
    if(p){
      p.sessions=p.sessions||[];
-     if(!p.sessions.some(s=>s.reviewId===checkpoint.id)){p.sessions.push(lastResult);saveState();renderProgress()}
+     if(!p.sessions.some(s=>s.reviewId===checkpoint.id)){
+       lastResult.goldenMoments.forEach(g=>{g.ts=lastResult.ts;g.angleLabel=angleLabel;g.sessionMode=sessionMode});
+       p.sessions.push(lastResult);
+       p.goldenMoments=p.goldenMoments||[];
+       lastResult.goldenMoments.forEach(g=>{const j=p.goldenMoments.findIndex(x=>x.stroke===g.stroke&&x.metricKey===g.metricKey);if(j<0||g.metricScore>p.goldenMoments[j].metricScore){if(j>=0)p.goldenMoments.splice(j,1);p.goldenMoments.push(g)}});
+       saveState();renderProgress();renderGoldenGallery()
+     }
    }
    checkpoint.complete=true;checkpoint.processed=processed;checkpoint.updatedAt=Date.now();checkpoint.preliminaryScore=score;
    saveReviewCheckpoint(checkpoint);
