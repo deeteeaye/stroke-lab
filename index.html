@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V4.4</title>
+<title>Stroke Lab V5.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -148,6 +148,30 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
   object-position:center;
 }
 
+
+/* V5.0 development-system UI */
+.dev-hero{display:grid;grid-template-columns:1.4fr .6fr;gap:14px}
+@media(max-width:820px){.dev-hero{grid-template-columns:1fr}}
+.focus-card{background:linear-gradient(180deg,#111611,#0d100e);border:1px solid #39452b}
+.focus-title{font-family:Oswald,sans-serif;font-size:clamp(34px,8vw,58px);line-height:1;margin:6px 0 8px}
+.focus-score{font-family:Oswald,sans-serif;font-size:42px;color:var(--lime);line-height:1}
+.kicker{color:var(--lime);font-size:11px;text-transform:uppercase;letter-spacing:.12em;font-weight:800}
+.goal{border:1px solid #3d4928;border-radius:14px;padding:13px;background:#0a0d09}
+.context-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:700px){.context-grid{grid-template-columns:1fr}}
+.choice-group{display:flex;gap:7px;flex-wrap:wrap}
+.choice-group button{border:1px solid var(--line);background:#0d100e;color:var(--muted);border-radius:999px;padding:8px 12px}
+.choice-group button.active{background:var(--lime);color:#0b0d0b;border-color:var(--lime);font-weight:800}
+.setup-guide{border:1px dashed #44513b;border-radius:14px;padding:13px;background:#0b0e0b}
+.setup-guide strong{color:var(--lime)}
+.capture-row{display:flex;gap:8px;flex-wrap:wrap}
+.capture-row label{display:inline-flex;align-items:center;justify-content:center}
+.dev-stat{border:1px solid var(--line);border-radius:14px;padding:13px;background:#0d100e}
+.dev-stat strong{font-family:Oswald,sans-serif;font-size:28px;color:var(--lime)}
+.mini-trend{display:flex;gap:5px;align-items:flex-end;height:54px;margin-top:8px}
+.mini-trend i{flex:1;background:var(--lime);border-radius:4px 4px 1px 1px;min-width:5px;opacity:.88}
+.outcome-box{border:1px solid var(--line);border-radius:14px;padding:12px;background:#0d100e}
+
 </style>
 </head>
 <body>
@@ -176,28 +200,53 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
   </nav>
 
   <section id="home" class="view active">
-    <div class="grid">
-      <div class="card span7">
-        <div class="eyebrow">Family Hub</div>
-        <h2>Who's training?</h2>
-        <p class="sub">Choose a profile. Each player keeps their own hand preference, reminders, session history and progress.</p>
-        <div id="profileList" class="profile-list"></div>
-        <div class="row" style="margin-top:12px">
-          <button class="primary" id="addProfileBtn">+ Add profile</button>
-          <button class="ghost" id="editProfileBtn">Edit selected</button>
+    <div class="dev-hero">
+      <div class="card focus-card">
+        <div class="kicker">Today&apos;s development focus</div>
+        <div class="focus-title" id="devFocusTitle">Build your baseline</div>
+        <p class="sub" id="devFocusText">Complete a session and Stroke Lab will turn your mechanics into one clear priority.</p>
+        <div class="goal" style="margin-top:14px">
+          <div class="kicker">Next goal</div>
+          <div id="devGoalText">Record one clean baseline session.</div>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="primary" onclick="switchView('session')">Start practice</button>
+          <button class="ghost" onclick="switchView('progress')">Review progress</button>
         </div>
       </div>
-      <div class="card span5">
-        <div class="eyebrow">Today's focus</div>
+      <div class="card">
+        <div class="kicker">Current player</div>
         <h2 id="homePlayerName">Player</h2>
-        <div id="homeFocus" class="quote">"Constant Athletic Movement."</div>
-        <div class="notes-list" id="homePinned" style="margin-top:14px"></div>
+        <div id="devLatestScore" class="focus-score">—</div>
+        <div class="sub" id="devLatestLabel">No saved analysis yet</div>
+        <div class="mini-trend" id="devMiniTrend"></div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:14px">
+      <div class="card span7">
+        <div class="eyebrow">Development loop</div>
+        <h2>What to work on next</h2>
+        <div id="devPriorities" class="notes-list"></div>
+      </div>
+      <div class="card span5">
+        <div class="eyebrow">Progress signal</div>
+        <h2 id="devTrendHeadline">Build your baseline</h2>
+        <p class="sub" id="devTrendText">Comparisons turn on automatically once you have a previous similar session.</p>
+        <div id="devTrendStats"></div>
       </div>
       <div class="card span12">
-        <div class="eyebrow">Quick start</div>
-        <h2>Move. See. Flow.</h2>
-        <p class="sub">Use short clips for detailed form review or longer practice clips for a broader session read. Stroke Lab samples more frames as the video gets longer.</p>
-        <button class="primary" onclick="switchView('session')">Start a session</button>
+        <div class="row between">
+          <div>
+            <div class="eyebrow">Family Hub</div>
+            <h2 style="margin-bottom:4px">Who&apos;s training?</h2>
+          </div>
+          <div class="row">
+            <button class="primary" id="addProfileBtn">+ Add profile</button>
+            <button class="ghost" id="editProfileBtn">Edit selected</button>
+          </div>
+        </div>
+        <div id="profileList" class="profile-list"></div>
       </div>
     </div>
   </section>
@@ -209,19 +258,58 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
           <div><div class="eyebrow">New Session</div><h2>Video review</h2></div>
           <div class="sub" id="activePlayerBadge"></div>
         </div>
+        <div class="context-grid" style="margin:10px 0 12px">
+          <div>
+            <div class="kicker">Session type</div>
+            <div class="choice-group" id="sessionModeChoices" style="margin-top:7px">
+              <button data-mode="practice" class="active">Practice</button>
+              <button data-mode="match">Match</button>
+              <button data-mode="serve">Serve</button>
+            </div>
+          </div>
+          <div>
+            <div class="kicker">Camera angle</div>
+            <select id="cameraAngleSelect" style="margin-top:7px;width:100%;border:1px solid var(--line);background:#090c09;color:var(--text);border-radius:10px;padding:10px">
+              <option value="auto">Auto-detect</option>
+              <option value="behind">Behind baseline</option>
+              <option value="side">Side view</option>
+              <option value="oblique">Oblique / 3/4 view</option>
+              <option value="front">Front / rear view</option>
+            </select>
+          </div>
+          <div>
+            <div class="kicker">Ball-result pattern (optional)</div>
+            <select id="outcomePattern" style="margin-top:7px;width:100%;border:1px solid var(--line);background:#090c09;color:var(--text);border-radius:10px;padding:10px">
+              <option value="">Not tracking this session</option>
+              <option value="mostly-in">Mostly in / on target</option>
+              <option value="long">Frequently long</option>
+              <option value="net">Frequently in the net</option>
+              <option value="wide">Frequently wide</option>
+              <option value="mixed">Mixed misses</option>
+            </select>
+          </div>
+        </div>
+        <div class="setup-guide" id="cameraGuide" style="margin-bottom:12px">
+          <strong>Auto-detect:</strong> place the phone where you can see your full body and enough court to understand spacing.
+        </div>
         <div class="tabs" id="strokeTabs">
           <button data-stroke="all">All</button>
           <button data-stroke="forehand" class="active">Forehand</button>
           <button data-stroke="backhand">Backhand</button>
           <button data-stroke="serve">Serve</button>
         </div>
-        <div class="sub" id="strokeSelectionLabel" style="margin:-4px 0 12px">Selected: Forehand</div>
-        <div class="row" style="margin-bottom:12px">
-          <label class="primary">Load video<input id="videoInput" type="file" accept="video/*" class="hidden"></label>
-          <span class="sub" id="videoMeta">No video loaded</span>
+        <div class="sub" id="strokeSelectionLabel" style="margin:-4px 0 8px">Selected: Forehand</div>
+        <label class="row" style="margin:0 0 12px;gap:8px">
+          <input id="compareToggle" type="checkbox" checked style="width:auto">
+          <span class="sub">Compare with previous similar session</span>
+        </label>
+        <div class="capture-row" style="margin-bottom:8px">
+          <label class="primary">Record video<input id="recordVideoInput" type="file" accept="video/*" capture="environment" class="hidden"></label>
+          <label class="ghost">Choose from Photos<input id="videoInput" type="file" accept="video/*" class="hidden"></label>
         </div>
+        <div class="sub" id="videoMeta" style="margin-bottom:12px">No video loaded</div>
         <div class="video-box" id="videoBox">
-          <div class="video-empty" id="videoEmpty">Choose a tennis clip from any practical angle &mdash; side, front, behind baseline, oblique, or low. Stroke Lab will flag measurements it cannot read reliably.</div>
+          <div class="video-empty" id="videoEmpty">Frame your full body from head to shoes. Keep the phone steady and include enough court to judge spacing. Record here or choose an existing clip.</div>
           <video id="video" playsinline muted controls></video>
           <canvas id="overlay"></canvas>
         </div>
@@ -256,6 +344,16 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
           <div class="span8">
             <div class="eyebrow">Key factors</div>
             <div class="metric-list" id="resultMetrics"></div>
+          </div>
+          <div class="span12">
+            <div class="eyebrow">Next up</div>
+            <h3>Coaching priorities</h3>
+            <div id="coachingTips" class="notes-list"></div>
+          </div>
+          <div class="span12 hidden" id="comparisonBlock">
+            <div class="eyebrow">Progress check</div>
+            <h3>Compared with your previous similar session</h3>
+            <div id="comparisonSummary"></div>
           </div>
           <div class="span12">
             <h3>What the camera could &mdash; and could not &mdash; tell us</h3>
@@ -317,7 +415,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V4.4 | local-first family beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V5.0 | mechanics-first development beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -355,6 +453,8 @@ const seed = {
   ]
 };
 let state=loadState();
+if(state.compareSimilar===undefined)state.compareSimilar=true;
+if(!state.sessionPrefs)state.sessionPrefs={mode:'practice',cameraAngle:'auto',outcomePattern:''};
 if(!state.activeProfile && state.profiles.length) state.activeProfile=state.profiles[0].id;
 saveState();
 
@@ -383,6 +483,82 @@ document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>switchView(b.d
 function openModal(id){document.getElementById(id).classList.add('show')}
 function closeModal(id){document.getElementById(id).classList.remove('show')}
 window.closeModal=closeModal;
+
+
+function latestSessionsForPlayer(p){
+  return (p?.sessions||[]).slice().sort((a,b)=>(a.ts||0)-(b.ts||0));
+}
+function weakestMetricFromSession(s){
+  const rows=[];
+  (s?.results||[]).forEach(sr=>{
+    if(!sr.readable)return;
+    (sr.rows||[]).forEach(r=>rows.push({stroke:sr.stroke,row:r,score:r.score??100}));
+  });
+  return rows.sort((a,b)=>a.score-b.score)[0]||null;
+}
+function metricFriendlyName(item){
+  if(!item)return 'Build your baseline';
+  const key=item.row.key;
+  if(key==='elbow')return `${cap(item.stroke)} contact spacing`;
+  if(key==='frontKnee')return `${cap(item.stroke)} leg load`;
+  if(key==='stance')return `${cap(item.stroke)} athletic base`;
+  return `${cap(item.stroke)} mechanics`;
+}
+function developmentGoalText(item){
+  if(!item)return 'Record one clean baseline session.';
+  if(item.row.key==='elbow')return 'Create cleaner spacing through contact on your next 20–30 reps.';
+  if(item.row.key==='frontKnee')return 'Stay loaded through contact and avoid standing up early.';
+  if(item.row.key==='stance')return 'Keep the feet active and recover to a balanced base after every hit.';
+  return 'Repeat the strongest mechanics and improve the lowest-scoring movement.';
+}
+function renderDevelopmentHome(){
+  const p=activeProfile();
+  const sessions=latestSessionsForPlayer(p);
+  const latest=sessions.at(-1);
+
+  document.getElementById('devMiniTrend').innerHTML='';
+  document.getElementById('devLatestScore').textContent=latest?latest.score:'—';
+  document.getElementById('devLatestLabel').textContent=latest
+    ? `${new Date(latest.ts).toLocaleDateString()} | ${(latest.strokes||[]).map(cap).join(' + ')||'Session'}`
+    : 'No saved analysis yet';
+
+  const trend=sessions.slice(-6);
+  const mini=document.getElementById('devMiniTrend');
+  trend.forEach(s=>{
+    const i=document.createElement('i');
+    i.style.height=`${Math.max(10,Math.min(100,s.score||0))}%`;
+    i.title=`${s.score}/100`;
+    mini.appendChild(i);
+  });
+
+  const weak=weakestMetricFromSession(latest);
+  document.getElementById('devFocusTitle').textContent=metricFriendlyName(weak);
+  document.getElementById('devFocusText').textContent=weak
+    ? coachingTipForMetric(weak.stroke,weak.row)
+    : 'Complete a session and Stroke Lab will turn your mechanics into one clear priority.';
+  document.getElementById('devGoalText').textContent=developmentGoalText(weak);
+
+  const priorities=latest?buildCoachingTips(latest).slice(0,3):[];
+  document.getElementById('devPriorities').innerHTML=priorities.length
+    ? priorities.map((t,i)=>`<div class="note-item"><strong>${i+1}.</strong> ${esc(t)}</div>`).join('')
+    : '<div class="sub">Your next-session priorities will appear here after the first analysis.</div>';
+
+  const headline=document.getElementById('devTrendHeadline');
+  const text=document.getElementById('devTrendText');
+  const stats=document.getElementById('devTrendStats');
+  if(sessions.length<2){
+    headline.textContent='Build your baseline';
+    text.textContent='Complete another similar session to unlock automatic comparison.';
+    stats.innerHTML='';
+    return;
+  }
+
+  const prev=sessions.at(-2);
+  const delta=(latest.score||0)-(prev.score||0);
+  headline.textContent=delta>0?'Moving forward':delta<0?'New focus identified':'Holding steady';
+  text.textContent=`Latest score ${latest.score}/100 vs ${prev.score}/100 previously. ${delta>0?`Up ${delta} points.`:delta<0?`Down ${Math.abs(delta)} points — use the coaching priorities above.`:'No score change; look at the individual mechanics.'}`;
+  stats.innerHTML=`<div class="dev-stat"><strong>${delta>0?'+':''}${delta}</strong><div class="sub">change vs previous saved session</div></div>`;
+}
 
 function renderProfiles(){
   const list=document.getElementById('profileList'); list.innerHTML='';
@@ -432,9 +608,22 @@ function renderProgress(){
   const avg=Math.round(sessions.reduce((a,s)=>a+s.score,0)/sessions.length),last=sessions.at(-1);
   document.getElementById('progressSummary').textContent=`${sessions.length} saved session${sessions.length===1?'':'s'} | average ${avg}/100 | latest ${last.score}/100.`;
   document.getElementById('progressStats').innerHTML=`<div class="note-item"><strong>${sessions.length}</strong><div class="sub">Sessions</div></div><div class="note-item" style="margin-top:8px"><strong>${avg}/100</strong><div class="sub">Average score</div></div>`;
-  document.getElementById('historyList').innerHTML=sessions.slice().reverse().map(s=>{const label=(s.strokes&&s.strokes.length)?s.strokes.map(cap).join(' + '):cap(s.stroke||'Session');return `<div class="note-item"><div class="row between"><strong>${label} | ${s.score}/100</strong><span class="sub">${new Date(s.ts).toLocaleDateString()}</span></div><div class="sub">${esc(s.angleLabel||'View not classified')}</div></div>`}).join('');
+  document.getElementById('historyList').innerHTML=sessions.slice().reverse().map((s,idx)=>{
+    const label=(s.strokes&&s.strokes.length)?s.strokes.map(cap).join(' + '):cap(s.stroke||'Session');
+    const tips=buildCoachingTips(s).slice(0,2).map(t=>`<div class="sub">• ${esc(t)}</div>`).join('');
+    return `<details class="note-item">
+      <summary class="row between" style="cursor:pointer">
+        <strong>${label} | ${s.score}/100</strong>
+        <span class="sub">${new Date(s.ts).toLocaleDateString()}</span>
+      </summary>
+      <div class="sub" style="margin-top:8px">${esc(s.angleLabel||'View not classified')} | ${cap(s.sessionMode||'practice')}</div>
+      <div class="sub">${s.diagnostics?.processed||0}/${s.diagnostics?.frames||0} pose reads</div>
+      ${s.outcomePattern?`<div class="sub">Ball pattern: ${esc(s.outcomePattern)}</div>`:''}
+      <div style="margin-top:8px">${tips}</div>
+    </details>`;
+  }).join('');
 }
-function renderAll(){renderProfiles();renderNotes();renderProgress();const p=activeProfile();if(p)dominantHand=p.hand}
+function renderAll(){renderProfiles();renderNotes();renderProgress();renderDevelopmentHome();const p=activeProfile();if(p)dominantHand=p.hand}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function cap(s){return s? s[0].toUpperCase()+s.slice(1):''}
 function fileToData(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
@@ -489,7 +678,50 @@ document.querySelectorAll('#strokeTabs button').forEach(b=>b.onclick=()=>{
  refreshStrokeButtons();
 });
 refreshStrokeButtons();
-document.getElementById('videoInput').onchange=e=>{const f=e.target.files[0];if(!f)return;video.src=URL.createObjectURL(f);video.style.display='block';document.getElementById('videoEmpty').style.display='none';document.getElementById('videoMeta').textContent=`${f.name} | ${(f.size/1048576).toFixed(1)} MB`;video.onloadedmetadata=()=>{videoLoaded=true;refreshStrokeButtons()}};
+
+const sessionModeChoices=document.getElementById('sessionModeChoices');
+const cameraAngleSelect=document.getElementById('cameraAngleSelect');
+const outcomePattern=document.getElementById('outcomePattern');
+
+function cameraGuideText(angle){
+  const map={
+    auto:'<strong>Auto-detect:</strong> show your full body and enough court to judge spacing. Stroke Lab will classify the view.',
+    behind:'<strong>Behind baseline:</strong> place the phone near center behind the baseline, about waist-to-chest height. Best for base, lateral movement, spacing and recovery.',
+    side:'<strong>Side view:</strong> place the phone outside the sideline around waist-to-chest height. Best for knee load, posture, contact spacing and arm extension.',
+    oblique:'<strong>Oblique / 3/4:</strong> place the phone between side and behind-baseline positions. Good balanced view, but some measurements carry lower confidence.',
+    front:'<strong>Front / rear:</strong> keep your full body visible. Useful for symmetry, base width and body alignment; depth-related measurements are less reliable.'
+  };
+  return map[angle]||map.auto;
+}
+function renderSessionPrefs(){
+  const prefs=state.sessionPrefs||{mode:'practice',cameraAngle:'auto',outcomePattern:''};
+  sessionModeChoices.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.mode===prefs.mode));
+  cameraAngleSelect.value=prefs.cameraAngle||'auto';
+  outcomePattern.value=prefs.outcomePattern||'';
+  document.getElementById('cameraGuide').innerHTML=cameraGuideText(cameraAngleSelect.value);
+}
+sessionModeChoices.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  state.sessionPrefs.mode=b.dataset.mode;
+  if(b.dataset.mode==='serve' && !selectedStrokes.has('serve')) selectedStrokes.add('serve');
+  saveState();renderSessionPrefs();refreshStrokeButtons();
+});
+cameraAngleSelect.onchange=()=>{state.sessionPrefs.cameraAngle=cameraAngleSelect.value;saveState();renderSessionPrefs()};
+outcomePattern.onchange=()=>{state.sessionPrefs.outcomePattern=outcomePattern.value;saveState()};
+renderSessionPrefs();
+
+const compareToggle=document.getElementById('compareToggle');
+compareToggle.checked=state.compareSimilar!==false;
+compareToggle.onchange=()=>{state.compareSimilar=compareToggle.checked;saveState();};
+function loadVideoFile(f){
+  if(!f)return;
+  video.src=URL.createObjectURL(f);
+  video.style.display='block';
+  document.getElementById('videoEmpty').style.display='none';
+  document.getElementById('videoMeta').textContent=`${f.name} | ${(f.size/1048576).toFixed(1)} MB`;
+  video.onloadedmetadata=()=>{videoLoaded=true;refreshStrokeButtons()};
+}
+document.getElementById('videoInput').onchange=e=>loadVideoFile(e.target.files[0]);
+document.getElementById('recordVideoInput').onchange=e=>loadVideoFile(e.target.files[0]);
 
 let poseLibsPromise=null;
 function loadScriptWithFallback(urls,timeoutMs=30000){
@@ -757,6 +989,9 @@ analyzeBtn.onclick=async()=>{
  const p=activeProfile();if(p)dominantHand=p.hand;
  await acquireReviewWakeLock();
  const strokes=[...selectedStrokes];
+ const requestedAngle=(state.sessionPrefs?.cameraAngle)||'auto';
+ const sessionMode=(state.sessionPrefs?.mode)||'practice';
+ const outcomePatternValue=(state.sessionPrefs?.outcomePattern)||'';
  if(!strokes.length){statusEl.textContent='Choose at least one stroke.';return}
  analysisCancelled=false;
  analyzeBtn.disabled=true;
@@ -870,7 +1105,9 @@ analyzeBtn.onclick=async()=>{
 
    const denom=Math.max(1,processed);
    const avgRead=readability/denom;
-   const angleLabel=Object.entries(angles).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Unclear camera angle';
+   const detectedAngleLabel=Object.entries(angles).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Unclear camera angle';
+   const requestedAngleLabels={behind:'Behind baseline',side:'Side view',oblique:'Oblique view',front:'Front / rear view',auto:null};
+   const angleLabel=requestedAngleLabels[requestedAngle]||detectedAngleLabel;
    document.getElementById('angleRead').textContent=angleLabel;
    const rescued=diag.retrySuccess+diag.fallbackSuccess;
    document.getElementById('visibilityRead').textContent=
@@ -940,7 +1177,7 @@ analyzeBtn.onclick=async()=>{
    }catch(e){console.warn(e)}
    const score=Math.round(readable.reduce((a,r)=>a+r.score,0)/readable.length);
    lastResult={
-     score,strokes,ts:Date.now(),angleLabel,visibility:avgRead,
+     score,strokes,ts:Date.now(),angleLabel,detectedAngleLabel,requestedAngle,sessionMode,outcomePattern:outcomePatternValue,visibility:avgRead,
      results:strokeResults,has3D:readable.some(r=>r.has3D),
      diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors,...diag},autoSaved:true,reviewId:checkpoint.id
    };
@@ -966,9 +1203,113 @@ analyzeBtn.onclick=async()=>{
    refreshStrokeButtons();
  }
 };
+
+function strokeSetKey(strokes){
+  return [...(strokes||[])].map(s=>String(s).toLowerCase()).sort().join('|');
+}
+function previousComparableSession(currentResult){
+  const p=activeProfile();
+  if(!p)return null;
+  const currentKey=strokeSetKey(currentResult.strokes);
+  const sessions=(p.sessions||[])
+    .filter(s=>s.reviewId!==currentResult.reviewId)
+    .filter(s=>{
+      const key=strokeSetKey(s.strokes||[s.stroke].filter(Boolean));
+      return key===currentKey;
+    })
+    .sort((a,b)=>(b.ts||0)-(a.ts||0));
+  return sessions[0]||null;
+}
+
+function angleCoachingNote(result){
+  const a=result.requestedAngle||'auto';
+  if(a==='side')return 'Side view: strongest confidence is in knee load, posture, contact spacing and arm extension.';
+  if(a==='behind')return 'Behind baseline: strongest confidence is in base, lateral spacing and recovery; arm-extension scores are directional, not absolute.';
+  if(a==='oblique')return 'Oblique view: useful balanced read, with moderate perspective distortion on depth measurements.';
+  if(a==='front')return 'Front / rear view: strongest confidence is in base width and alignment; depth-related mechanics carry lower confidence.';
+  return `Auto-detected ${result.detectedAngleLabel||result.angleLabel||'camera view'}; Stroke Lab is weighting only the mechanics visible from that angle.`;
+}
+
+function coachingTipForMetric(stroke,row){
+  const score=row.score??0;
+  const name=(row.key||'').toLowerCase();
+  const side=stroke==='serve'?'serve':stroke;
+
+  if(name==='frontknee'){
+    if(score<55)return `${cap(side)}: load the legs earlier and stay flexed through contact.`;
+    if(score<75)return `${cap(side)}: keep more knee flex through the hitting zone instead of rising early.`;
+    return `${cap(side)}: maintain the leg load you already have and keep it consistent rep to rep.`;
+  }
+  if(name==='elbow'){
+    if(score<55)return `${cap(side)}: create more hitting-arm extension through contact; avoid getting jammed.`;
+    if(score<75)return `${cap(side)}: reach through the ball a little longer before wrapping the finish.`;
+    return `${cap(side)}: arm extension is solid; focus on repeating the same contact spacing.`;
+  }
+  if(name==='stance'){
+    if(score<55)return `${cap(side)}: widen and stabilize the base so you can hit without getting stuck upright or narrow.`;
+    if(score<75)return `${cap(side)}: keep the feet active and recover into a balanced base between shots.`;
+    return `${cap(side)}: base is solid; keep the same spacing while staying in constant athletic movement.`;
+  }
+  return `${cap(side)}: keep the strongest mechanics and clean up the lowest-scoring movement first.`;
+}
+function buildCoachingTips(r){
+  const all=[];
+  (r.results||[]).forEach(sr=>{
+    if(!sr.readable)return;
+    (sr.rows||[]).forEach(row=>all.push({stroke:sr.stroke,row,score:row.score??0}));
+  });
+  all.sort((a,b)=>a.score-b.score);
+  const tips=[];
+  const seen=new Set();
+  for(const item of all){
+    const key=`${item.stroke}:${item.row.key}`;
+    if(seen.has(key))continue;
+    seen.add(key);
+    tips.push(coachingTipForMetric(item.stroke,item.row));
+    if(tips.length>=3)break;
+  }
+  if(!tips.length)tips.push('Keep the clip framing consistent and build around one clear movement priority next session.');
+  return tips;
+}
+function renderComparison(r){
+  const block=document.getElementById('comparisonBlock');
+  const wrap=document.getElementById('comparisonSummary');
+  const compareOn=state.compareSimilar!==false;
+  if(!compareOn){block.classList.add('hidden');wrap.innerHTML='';return}
+
+  const prev=previousComparableSession(r);
+  if(!prev){block.classList.add('hidden');wrap.innerHTML='';return}
+
+  const delta=(r.score??0)-(prev.score??0);
+  const sign=delta>0?'+':'';
+  const currentDate=new Date(r.ts).toLocaleDateString();
+  const prevDate=new Date(prev.ts).toLocaleDateString();
+
+  const rows=(r.results||[]).map(sr=>{
+    const prior=(prev.results||[]).find(x=>x.stroke===sr.stroke);
+    if(!prior||!sr.readable||!prior.readable)return '';
+    const d=(sr.score??0)-(prior.score??0);
+    const ds=d>0?`+${d}`:`${d}`;
+    return `<div class="note-item"><div class="row between"><strong>${cap(sr.stroke)}</strong><span>${sr.score}/100 <span class="sub">(${ds} vs prior)</span></span></div></div>`;
+  }).join('');
+
+  wrap.innerHTML=`
+    <div class="notice ${delta>=0?'good':'warn'}">
+      Overall: <strong>${r.score}/100</strong> vs <strong>${prev.score}/100</strong> on ${prevDate}
+      &mdash; ${sign}${delta} points.
+    </div>
+    ${rows}
+    <div class="sub" style="margin-top:8px">Current: ${currentDate} | Previous similar: ${prevDate}</div>
+  `;
+  block.classList.remove('hidden');
+}
+
 function renderResult(r){
  document.getElementById('resultCard').classList.remove('hidden');
  document.getElementById('scoreBig').textContent=r.score;
+ const coachingTips=buildCoachingTips(r);
+ document.getElementById('coachingTips').innerHTML=coachingTips.map((t,i)=>`<div class="note-item"><strong>${i+1}.</strong> ${esc(t)}</div>`).join('');
+ renderComparison(r);
  const cov=r.diagnostics?.frames?Math.round((r.diagnostics.processed/r.diagnostics.frames)*100):0;
  document.getElementById('scoreCaption').textContent=`Pose-only estimate based on ${cov}% sample coverage. ` +
  (r.score>=85?'Strong mechanics in the readable phases.':r.score>=70?'Solid base with identifiable improvement areas.':'Useful film for identifying priority changes.');
@@ -979,6 +1320,16 @@ function renderResult(r){
    return `<div class="note-item" style="margin-bottom:10px"><div class="row between"><strong>${cap(sr.stroke)}</strong><strong style="color:var(--lime)">${sr.score}/100</strong></div><div class="metric-list" style="margin-top:10px">${metrics}</div></div>`;
  }).join('');
  const notes=[];notes.push({c:'good',t:`Camera read: ${r.angleLabel}. ${r.has3D?'3D body landmarks were available.':'2D pose fallback was used.'}`});
+ 
+ notes.push({c:'good',t:`Session context: ${cap(r.sessionMode||'practice')} | ${angleCoachingNote(r)}`});
+ if(r.outcomePattern){
+   const outcomeLabels={
+     'mostly-in':'mostly in / on target','long':'frequently long','net':'frequently in the net',
+     'wide':'frequently wide','mixed':'mixed misses'
+   };
+   notes.push({c:'',t:`Player-reported ball pattern: ${outcomeLabels[r.outcomePattern]||r.outcomePattern}. Use this alongside the mechanics score to look for cause-and-effect over time.`});
+ }
+
  const d=r.diagnostics||{};
  const rescued=(d.retrySuccess||0)+(d.fallbackSuccess||0);
  notes.push({c:rescued?'good':'',t:
