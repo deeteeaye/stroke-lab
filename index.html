@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V4.2</title>
+<title>Stroke Lab V4.3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -317,7 +317,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V3.2 | local-first family beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V4.3 | local-first family beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -372,7 +372,7 @@ function renderCheckpoint(){
   const done=cp.processed||0,total=cp.frames||0,pct=total?Math.round(done/total*100):0;
   document.getElementById('checkpointTitle').textContent=cp.complete?'Last review saved':'Review snapshot preserved';
   document.getElementById('checkpointText').textContent=cp.complete
-    ? `Completed ${new Date(cp.updatedAt).toLocaleString()} and saved to session history.`
+    ? `Completed ${new Date(cp.updatedAt).toLocaleString()} with ${cp.processed||0} of ${cp.frames||0} planned samples and saved to session history.`
     : `Saved ${done} of ${total} samples (${pct}%). If iOS suspends or discards the web app, this checkpoint remains instead of disappearing.`;
 }
 function activeProfile(){return state.profiles.find(p=>p.id===state.activeProfile)||state.profiles[0]}
@@ -642,54 +642,37 @@ async function ensureVideoReady(timeoutMs=12000){
   return await new Promise(resolve=>{
     let done=false;
     const finish=v=>{if(done)return;done=true;cleanup();resolve(v)};
-    const cleanup=()=>{
-      clearTimeout(timer);
-      video.removeEventListener('loadeddata',onReady);
-      video.removeEventListener('canplay',onReady);
-      video.removeEventListener('error',onError);
-    };
+    const cleanup=()=>{clearTimeout(timer);video.removeEventListener('loadeddata',onReady);video.removeEventListener('canplay',onReady);video.removeEventListener('error',onError)};
     const onReady=()=>finish(true),onError=()=>finish(false);
     const timer=setTimeout(()=>finish(video.readyState>=2),timeoutMs);
-    video.addEventListener('loadeddata',onReady,{once:true});
-    video.addEventListener('canplay',onReady,{once:true});
-    video.addEventListener('error',onError,{once:true});
+    video.addEventListener('loadeddata',onReady,{once:true});video.addEventListener('canplay',onReady,{once:true});video.addEventListener('error',onError,{once:true});
     try{video.load()}catch(e){}
   });
 }
-async function seek(t,timeoutMs=9000){
-  const dur=video.duration||0;
-  const target=Math.max(0,Math.min(Math.max(0,dur-.08),t));
-  video.pause();
-
-  // iOS Safari is much more reliable with direct currentTime assignment than fastSeek()
-  // when repeatedly sampling local MOV files.
-  for(let attempt=0;attempt<2;attempt++){
-    if(!(await ensureVideoReady(timeoutMs)))continue;
-    try{
-      video.currentTime=target;
-    }catch(e){
-      await sleep(180);
-      continue;
-    }
-
-    const started=performance.now();
-    while(performance.now()-started<timeoutMs){
-      if(analysisCancelled)return false;
-      const close=Math.abs((video.currentTime||0)-target)<0.16;
-      if(close && !video.seeking && video.readyState>=2){
-        // Give WebKit a moment to expose the newly decoded frame to canvas.
-        await sleep(120);
-        return true;
-      }
-      await sleep(50);
-    }
-
-    // Retry the same target once. This catches WebKit's occasional dropped seek
-    // without throwing away a valid sample.
-    try{video.currentTime=Math.max(0,target-.001)}catch(e){}
-    await sleep(220);
+async function resetVideoToStart(timeoutMs=10000){
+  if(!(await ensureVideoReady(timeoutMs)))return false;
+  video.pause();try{video.currentTime=0}catch(e){return false}
+  const started=performance.now();
+  while(performance.now()-started<timeoutMs){
+    if(analysisCancelled)return false;
+    if(!video.seeking&&video.readyState>=2&&(video.currentTime||0)<.20){await sleep(120);return true}
+    await sleep(50);
   }
   return false;
+}
+async function advanceToSample(target,timeoutMs=15000){
+  if(!(await ensureVideoReady(timeoutMs)))return false;
+  if(analysisCancelled)return false;
+  if((video.currentTime||0)>=target-.08){video.pause();await sleep(80);return true}
+  const prev=video.playbackRate||1;
+  try{video.muted=true;video.playsInline=true;video.playbackRate=2;await video.play()}catch(e){video.playbackRate=prev;return false}
+  const started=performance.now();
+  while(performance.now()-started<timeoutMs){
+    if(analysisCancelled)break;
+    if(video.ended||(video.currentTime||0)>=target-.06){video.pause();video.playbackRate=prev;await sleep(120);return true}
+    await sleep(40);
+  }
+  video.pause();video.playbackRate=prev;return false;
 }
 function drawPose(k){
  const c=overlay,box=video.getBoundingClientRect();c.width=video.videoWidth;c.height=video.videoHeight;const ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);ctx.strokeStyle='#d8f238';ctx.fillStyle='#d8f238';ctx.lineWidth=Math.max(2,c.width/300);
@@ -713,7 +696,7 @@ analyzeBtn.onclick=async()=>{
  progressFill.style.width='0%';
  document.getElementById('resultCard').classList.add('hidden');
 
- const maxAnalysisSide=480;
+ const maxAnalysisSide=640;
  const vw=video.videoWidth||640,vh=video.videoHeight||360;
  const scale=Math.min(1,maxAnalysisSide/Math.max(vw,vh));
  work.width=Math.max(1,Math.round(vw*scale));
@@ -735,34 +718,33 @@ analyzeBtn.onclick=async()=>{
  const mobileCap=isiOS?190:220;
  frames=Math.max(50,Math.min(mobileCap,frames));
  const step=duration/frames;
-
- let bestByStroke={},valid=0,readability=0,angles={},seekSkips=0,poseErrors=0,processed=0;
+ const resetOK=await resetVideoToStart();
+ if(!resetOK){statusEl.textContent='Could not prepare the video decoder. Reload the clip and try again.';return}
+ let bestByStroke={},valid=0,readability=0,angles={},decodeMisses=0,poseErrors=0,processed=0;
  const samplesByStroke=Object.fromEntries(strokes.map(s=>[s,[]]));
  let checkpoint={
    id:'review-'+Date.now(),profileId:p?.id||null,profileName:p?.name||'Player',
    strokes,startedAt:Date.now(),updatedAt:Date.now(),complete:false,
-   frames,processed:0,valid:0,seekSkips:0,poseErrors:0,preliminaryScore:null
+   frames,processed:0,valid:0,seekSkips:0,decodeMisses:0,poseErrors:0,preliminaryScore:null
  };
  saveReviewCheckpoint(checkpoint);
 
- statusEl.textContent=`Preparing ${frames} samples. Stroke Lab will wait for each iPhone video frame to decode and retry slow seeks instead of discarding them.`;
+ statusEl.textContent=`Preparing ${frames} samples. Stroke Lab will move forward through the clip using normal playback decoding instead of repeatedly seeking.`;
 
  try{
    for(let i=0;i<frames;i++){
      if(analysisCancelled) break;
-     const target=Math.min(duration-.06,i*step);
-     statusEl.textContent=`Seeking sample ${i+1} of ${frames}...`;
-
-     const seekOK=await seek(target,9000);
+     const target=Math.min(duration-.06,(i+.5)*step);
+     statusEl.textContent=`Advancing through clip ${i+1} of ${frames}...`;
+     const frameOK=await advanceToSample(target,15000);
      if(analysisCancelled) break;
-     if(!seekOK){
-       seekSkips++;
+     if(!frameOK){
+       decodeMisses++;
        progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
-       statusEl.textContent=`Could not decode sample ${i+1} after two attempts. Continuing with the remaining samples...`;
-       await new Promise(r=>setTimeout(r,0));
-       continue;
+       statusEl.textContent=`Decoder missed sample ${i+1}. Continuing forward without resetting the video...`;
+       checkpoint.processed=processed;checkpoint.valid=valid;checkpoint.decodeMisses=decodeMisses;checkpoint.seekSkips=decodeMisses;checkpoint.poseErrors=poseErrors;checkpoint.updatedAt=Date.now();saveReviewCheckpoint(checkpoint);
+       await new Promise(r=>setTimeout(r,0));continue;
      }
-
      statusEl.textContent=`Reading body position ${i+1} of ${frames}...`;
      try{
        wctx.drawImage(video,0,0,work.width,work.height);
@@ -797,7 +779,7 @@ analyzeBtn.onclick=async()=>{
      progressFill.style.width=`${Math.round((i+1)/frames*100)}%`;
      statusEl.textContent=`Processed ${i+1} of ${frames} samples...`;
      const prelimScores=Object.values(bestByStroke).map(x=>x?.s?.score).filter(v=>Number.isFinite(v));
-     checkpoint.processed=i+1;checkpoint.valid=valid;checkpoint.seekSkips=seekSkips;checkpoint.poseErrors=poseErrors;
+     checkpoint.processed=processed;checkpoint.valid=valid;checkpoint.decodeMisses=decodeMisses;checkpoint.seekSkips=decodeMisses;checkpoint.poseErrors=poseErrors;
      checkpoint.updatedAt=Date.now();
      checkpoint.preliminaryScore=prelimScores.length?Math.round(prelimScores.reduce((a,b)=>a+b,0)/prelimScores.length):null;
      saveReviewCheckpoint(checkpoint);
@@ -817,7 +799,7 @@ analyzeBtn.onclick=async()=>{
    document.getElementById('visibilityRead').textContent=
      `Body visibility ${Math.round(avgRead*100)}% | ${frames} planned samples | ${processed} pose reads | ${valid} usable` +
      (poseErrors?` | ${poseErrors} pose timeouts/errors`:'') +
-     (seekSkips?` | ${seekSkips} seek failures`:'') + '.';
+     (decodeMisses?` | ${decodeMisses} decode misses`:'') + '.';
 
    const minReliableReads=Math.max(12,Math.ceil(frames*.25));
    if(processed<minReliableReads){
@@ -825,7 +807,7 @@ analyzeBtn.onclick=async()=>{
      checkpoint.failed=true;
      checkpoint.processed=processed;
      checkpoint.poseErrors=poseErrors;
-     checkpoint.seekSkips=seekSkips;
+     checkpoint.seekSkips=decodeMisses;checkpoint.decodeMisses=decodeMisses;
      saveReviewCheckpoint(checkpoint);
      statusEl.textContent=
        `Insufficient sample coverage: ${processed} of ${frames} planned samples produced pose reads. ` +
@@ -867,36 +849,32 @@ analyzeBtn.onclick=async()=>{
    }
 
    const bestOverall=readable.slice().sort((a,b)=>b.score-a.score)[0];
-   statusEl.textContent='Preparing the best frame...';
-   const finalSeek=await seek(bestOverall.t,9000);
-   if(finalSeek && !analysisCancelled){
-     try{
-       wctx.drawImage(video,0,0,work.width,work.height);
-       const poses=await Promise.race([
-         detector.estimatePoses(work),
-         new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),14000))
-       ]);
-       if(poses?.length)drawPose(mapKP(poses[0].keypoints));
-     }catch(e){console.warn(e)}
-   }
-
+   statusEl.textContent='Preparing representative frame...';
+   try{
+     wctx.drawImage(video,0,0,work.width,work.height);
+     const poses=await Promise.race([
+       detector.estimatePoses(work),
+       new Promise((_,rej)=>setTimeout(()=>rej(new Error('Final pose read timed out')),14000))
+     ]);
+     if(poses?.length)drawPose(mapKP(poses[0].keypoints));
+   }catch(e){console.warn(e)}
    const score=Math.round(readable.reduce((a,r)=>a+r.score,0)/readable.length);
    lastResult={
      score,strokes,ts:Date.now(),angleLabel,visibility:avgRead,
      results:strokeResults,has3D:readable.some(r=>r.has3D),
-     diagnostics:{frames,processed,seekSkips,poseErrors},autoSaved:true,reviewId:checkpoint.id
+     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors},autoSaved:true,reviewId:checkpoint.id
    };
    renderResult(lastResult);
    if(p){
      p.sessions=p.sessions||[];
      if(!p.sessions.some(s=>s.reviewId===checkpoint.id)){p.sessions.push(lastResult);saveState();renderProgress()}
    }
-   checkpoint.complete=true;checkpoint.processed=frames;checkpoint.updatedAt=Date.now();checkpoint.preliminaryScore=score;
+   checkpoint.complete=true;checkpoint.processed=processed;checkpoint.updatedAt=Date.now();checkpoint.preliminaryScore=score;
    saveReviewCheckpoint(checkpoint);
    statusEl.textContent=
      `Review complete and saved automatically. ${processed} of ${frames} planned samples produced pose reads` +
      (poseErrors?`, ${poseErrors} pose timeouts/errors`:'') +
-     (seekSkips?`, ${seekSkips} seek failures`:'') + '.';
+     (decodeMisses?`, ${decodeMisses} decode misses`:'') + '.';
    document.getElementById('saveSessionBtn').classList.add('hidden');
  }finally{
    await releaseReviewWakeLock();
