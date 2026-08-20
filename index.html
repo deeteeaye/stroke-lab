@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V5.4</title>
+<title>Stroke Lab V5.5</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -181,6 +181,19 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
 .fit-good{border-left:4px solid #74e37d}.fit-warn{border-left:4px solid #f3b74a}.fit-neutral{border-left:4px solid #647068}
 .technique-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .small-input{width:100%;border:1px solid var(--line);background:#090c09;color:var(--text);border-radius:10px;padding:10px}
+
+.borrow-option{display:flex!important;align-items:flex-start!important;gap:10px!important;width:100%!important;box-sizing:border-box!important;white-space:normal!important;overflow:visible!important}
+.borrow-option input{flex:0 0 auto!important;width:22px!important;height:22px!important;margin:3px 0 0 0!important}
+.borrow-copy{min-width:0;flex:1;line-height:1.35}
+.borrow-copy strong{display:block;margin-bottom:4px}
+.tech-guidance{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
+.tech-guidance .note-item{overflow:visible;white-space:normal}
+.compare-source{border:1px solid var(--line);border-radius:12px;padding:12px;background:#0b0e0b;margin-top:10px}
+.compare-source strong{color:var(--lime)}
+@media(max-width:760px){
+  .technique-actions{display:grid;grid-template-columns:1fr 1fr}
+  .technique-actions button{width:100%}
+}
 </style>
 </head>
 <body>
@@ -423,6 +436,15 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
         </div>
 
         <div style="margin-top:12px"><div class="kicker">What interests you about it?</div><textarea id="techniqueNotes" class="small-input" rows="3" placeholder="What are you hoping to borrow or experiment with?"></textarea></div>
+        <div style="margin-top:12px">
+          <div class="kicker">Compare against my</div>
+          <select id="techniqueBaselineSelect" class="small-input" style="margin-top:7px">
+            <option value="latest">Latest comparable saved session (recommended)</option>
+          </select>
+          <div class="sub" id="techniqueBaselineNote" style="margin-top:6px">
+            Stroke Lab will automatically use your most recent saved session for this stroke. You do not need to upload your own clip again.
+          </div>
+        </div>
         <div class="capture-row" style="margin-top:12px">
           <label class="primary">Choose technique clip<input id="techniqueVideoInput" type="file" accept="video/*" class="hidden"></label>
           <button class="ghost" id="analyzeTechniqueBtn" disabled>Analyze technique</button>
@@ -433,8 +455,28 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
 
         <div class="hidden" id="techniqueAnalysisCard" style="margin-top:14px">
           <div class="eyebrow">Technique read</div><h3>What this technique is doing</h3><div id="techniqueAnalysisSummary"></div>
-          <div style="margin-top:14px"><div class="eyebrow">Fit for my game</div><div id="techniqueFitSummary"></div></div>
-          <div style="margin-top:14px"><div class="eyebrow">Add to my game</div><div id="techniqueBorrowOptions"></div></div>
+
+          <div style="margin-top:14px">
+            <div class="eyebrow">Compared with me</div>
+            <div id="techniqueBaselineUsed" class="compare-source"></div>
+            <div id="techniqueFitSummary" style="margin-top:10px"></div>
+          </div>
+
+          <div style="margin-top:14px">
+            <div class="eyebrow">How to add it</div>
+            <h3>Try this in your game</h3>
+            <div id="techniqueHowTo" class="tech-guidance"></div>
+          </div>
+
+          <div style="margin-top:14px">
+            <div class="eyebrow">Add to my game</div>
+            <div id="techniqueBorrowOptions" class="tech-guidance"></div>
+          </div>
+
+          <div style="margin-top:14px">
+            <div class="eyebrow">Next-session test</div>
+            <div id="techniqueValidationPlan" class="tech-guidance"></div>
+          </div>
           <div class="technique-actions"><button class="primary" id="saveTechniqueBtn">Save technique</button><button class="ghost" id="resetTechniqueBtn">Start over</button></div>
         </div>
       </div>
@@ -464,7 +506,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V5.4 | technique-lab reliability beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V5.5 | technique-coaching beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -679,9 +721,127 @@ async function saveTechniqueRecord(rec){const db=await openTechniqueDB();return 
 async function getTechniqueRecords(){const db=await openTechniqueDB();return new Promise((resolve,reject)=>{const tx=db.transaction(TECH_STORE,'readonly');const req=tx.objectStore(TECH_STORE).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error)})}
 async function deleteTechniqueRecord(id){const db=await openTechniqueDB();return new Promise((resolve,reject)=>{const tx=db.transaction(TECH_STORE,'readwrite');tx.objectStore(TECH_STORE).delete(id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
 function techMetricName(k){return {frontKnee:'Leg load',elbow:'Arm extension / spacing',stance:'Athletic base'}[k]||k}
-function latestComparablePlayerMetric(stroke,key){const p=activeProfile();if(!p)return null;const sessions=(p.sessions||[]).slice().reverse().filter(s=>(s.strokes||[]).includes(stroke));for(const s of sessions){const sr=(s.results||[]).find(x=>x.stroke===stroke);const row=sr?.rows?.find(r=>r.key===key);if(row)return row.score}return null}
-function buildTechniqueFit(stroke,rows){return (rows||[]).map(r=>{const current=latestComparablePlayerMetric(stroke,r.key);if(current==null)return {key:r.key,label:techMetricName(r.key),reference:r.score,current:null,status:'neutral',text:'No comparable player baseline yet.'};const d=r.score-current;let status='neutral',text='Already close to your current mechanics.';if(d>=12){status='good';text='Worth experimenting with — this reference is meaningfully stronger here.'}else if(d<=-12){status='warn';text='This reference is not automatically better for your current mechanics. Test cautiously.'}return {key:r.key,label:techMetricName(r.key),reference:r.score,current,status,text}})}
-function techniqueSummaryFromRows(stroke,rows){const sorted=(rows||[]).slice().sort((a,b)=>(b.score||0)-(a.score||0));if(!sorted.length)return ['The body pose was readable, but no mechanics summary was available.'];return sorted.map(r=>`${techMetricName(r.key)}: ${r.score}/100`).slice(0,3)}
+
+function comparableSavedSessions(stroke){
+  const p=activeProfile();if(!p)return [];
+  return (p.sessions||[])
+    .filter(s=>(s.strokes||[]).includes(stroke))
+    .slice()
+    .sort((a,b)=>(b.ts||0)-(a.ts||0));
+}
+function selectedTechniqueBaseline(stroke){
+  const sessions=comparableSavedSessions(stroke);
+  const select=document.getElementById('techniqueBaselineSelect');
+  const wanted=select?.value||'latest';
+  if(!sessions.length)return null;
+  if(wanted==='latest')return sessions[0];
+  return sessions.find(s=>String(s.reviewId||s.ts)===wanted)||sessions[0];
+}
+function metricFromSession(session,stroke,key){
+  const sr=(session?.results||[]).find(x=>x.stroke===stroke);
+  return sr?.rows?.find(r=>r.key===key)?.score ?? null;
+}
+function buildTechniqueFit(stroke,rows,baselineSession){
+  return (rows||[]).map(r=>{
+    const current=metricFromSession(baselineSession,stroke,r.key);
+    if(current==null)return {key:r.key,label:techMetricName(r.key),reference:r.score,current:null,status:'neutral',text:'No comparable player baseline for this mechanic yet.'};
+    const d=r.score-current;
+    let status='neutral',text='Already close to your current mechanics.';
+    if(d>=12){status='good';text='The reference shows a meaningfully stronger version of this mechanic. It is worth testing.'}
+    else if(d<=-12){status='warn';text='The reference scores lower here. Do not copy this part just because the overall technique looks useful.'}
+    return {key:r.key,label:techMetricName(r.key),reference:r.score,current,status,text};
+  });
+}
+function techniqueSummaryFromRows(stroke,rows){
+  const sorted=(rows||[]).slice().sort((a,b)=>(b.score||0)-(a.score||0));
+  if(!sorted.length)return ['The body pose was readable, but no mechanics summary was available.'];
+  return sorted.map(r=>`${techMetricName(r.key)}: ${r.score}/100`).slice(0,3);
+}
+function techniqueTheme(title,notes,stroke){
+  const text=(title+' '+notes).toLowerCase();
+  if(stroke==='serve' && /racquet|racket/.test(text) && /drop/.test(text))return 'serve-racquet-drop';
+  if(stroke==='serve' && /leg|drive|jump|load/.test(text))return 'serve-leg-drive';
+  if(stroke==='serve' && /trophy/.test(text))return 'serve-trophy';
+  if(stroke==='serve' && /toss/.test(text))return 'serve-toss';
+  if(stroke==='forehand' && /spacing|space|extension|contact/.test(text))return 'forehand-spacing';
+  if(stroke==='backhand' && /spacing|space|extension|contact/.test(text))return 'backhand-spacing';
+  return stroke+'-general';
+}
+function techniqueExplanation(theme,fit){
+  if(theme==='serve-racquet-drop'){
+    return [
+      '<strong>What to notice:</strong> the useful idea is the transition from the trophy/load position into the upward swing. The hitting elbow stays organized while the racquet is allowed to fall behind the body before accelerating upward.',
+      '<strong>What Stroke Lab actually measured:</strong> arm/body positions around that motion. It does not yet track the racquet head precisely, so the racquet-drop conclusion comes from your chosen technique label plus the visible arm sequence.',
+      '<strong>What not to copy:</strong> do not force the racquet behind your back or deliberately collapse the elbow. The drop should emerge from a relaxed transition into the upward swing.'
+    ];
+  }
+  if(theme==='serve-leg-drive'){
+    return [
+      '<strong>What to notice:</strong> how the server loads through the legs, keeps the trunk organized, then transfers that load upward rather than simply jumping.',
+      '<strong>How to interpret the score:</strong> setup/landing balance is a supporting metric. A lower base score does not automatically mean poor serving if the clip is emphasizing the launch phase.'
+    ];
+  }
+  if(theme==='serve-trophy'){
+    return [
+      '<strong>What to notice:</strong> shoulder/arm organization before the upward acceleration, not a frozen pose to imitate exactly.',
+      '<strong>Goal:</strong> arrive at a repeatable loaded position that lets the racquet accelerate freely upward.'
+    ];
+  }
+  if(theme==='forehand-spacing'||theme==='backhand-spacing'){
+    return [
+      '<strong>What to notice:</strong> the distance between the hitting arm and torso as the player moves through the hitting zone.',
+      '<strong>Goal:</strong> create enough room to extend without reaching or getting jammed.'
+    ];
+  }
+  return [
+    '<strong>What to notice:</strong> focus on the mechanics that are stronger than your own saved baseline, not every visual detail in the reference.',
+    '<strong>Goal:</strong> borrow one change at a time, then test it against your next comparable session.'
+  ];
+}
+function techniqueHowToPlan(theme,fit){
+  if(theme==='serve-racquet-drop'){
+    return [
+      '<strong>1. Shadow it slowly.</strong> Start in a comfortable trophy position. Keep the hitting elbow organized and let the racquet fall naturally as the arm begins the upward sequence. Do 8–10 reps without a ball.',
+      '<strong>2. Half-speed serves.</strong> Hit 8–12 serves at roughly 50–60% effort. Think “relaxed drop → accelerate up,” not “push the racquet down.”',
+      '<strong>3. Add speed only if it stays loose.</strong> If the shoulder/arm feels forced, return to the slower version. Preserve the leg load you already do well instead of rebuilding the entire serve.'
+    ];
+  }
+  if(theme==='serve-leg-drive'){
+    return [
+      '<strong>1. Rehearse load-to-extension.</strong> Shadow 8–10 serves emphasizing a smooth bend and upward drive.',
+      '<strong>2. Serve at 60%.</strong> Keep the same rhythm while checking that the body rises as one sequence rather than jumping early.',
+      '<strong>3. Build pace last.</strong> Add speed only after the loading pattern remains repeatable.'
+    ];
+  }
+  if(theme==='forehand-spacing'||theme==='backhand-spacing'){
+    return [
+      '<strong>1. Shadow 10 reps.</strong> Create room between your torso and hitting arm before acceleration.',
+      '<strong>2. Hit 20 controlled balls.</strong> Prioritize clean spacing over pace.',
+      '<strong>3. Add movement.</strong> Repeat while recovering to your athletic base after every ball.'
+    ];
+  }
+  const strongest=fit.filter(x=>x.status==='good')[0];
+  return [
+    `<strong>1. Pick one change.</strong> ${strongest?`Start with ${strongest.label.toLowerCase()}.`:'Choose the clearest visible difference rather than copying the whole motion.'}`,
+    '<strong>2. Rehearse slowly.</strong> Use shadow swings or half-speed repetitions before adding normal pace.',
+    '<strong>3. Film a short test.</strong> Compare the next session to both your saved baseline and this reference.'
+  ];
+}
+function techniqueValidationPlan(theme,stroke,fit){
+  const targets=fit.filter(x=>x.status==='good').slice(0,2).map(x=>x.label);
+  if(theme==='serve-racquet-drop'){
+    return [
+      '<strong>Film next:</strong> 10–15 serves from the same or similar camera angle.',
+      '<strong>Stroke Lab should compare:</strong> upward arm extension and the arm/body sequence around the trophy-to-upward phase.',
+      '<strong>Success is not just a higher score:</strong> the motion should stay relaxed and repeatable. Note whether serve direction/depth improves or deteriorates.'
+    ];
+  }
+  return [
+    `<strong>Film next:</strong> a short ${stroke} practice from a comparable angle.`,
+    `<strong>Compare:</strong> ${targets.length?targets.join(' and '):'the selected mechanics'} against this reference and your saved baseline.`,
+    '<strong>Keep only what helps:</strong> if the new movement improves mechanics but hurts control or comfort, treat it as an experiment rather than a permanent change.'
+  ];
+}
 
 
 let techniqueFile=null,techniqueObjectURL=null,techniqueDraft=null;
@@ -695,6 +855,25 @@ function resetTechniqueForm(){
  document.getElementById('techniqueStatus').textContent='Choose a clip to begin.';
  document.getElementById('techniqueAnalysisCard').classList.add('hidden');techniqueAnalyzeBtn.disabled=true
 }
+
+const techniqueBaselineSelect=document.getElementById('techniqueBaselineSelect');
+const techniqueStrokeSelect=document.getElementById('techniqueStroke');
+function refreshTechniqueBaselineChoices(){
+  const stroke=techniqueStrokeSelect.value;
+  const sessions=comparableSavedSessions(stroke);
+  const previous=techniqueBaselineSelect.value||'latest';
+  techniqueBaselineSelect.innerHTML='<option value="latest">Latest comparable saved session (recommended)</option>'+
+    sessions.map(s=>`<option value="${s.reviewId||s.ts}">${new Date(s.ts).toLocaleDateString()} — ${s.score}/100 — ${(s.angleLabel||'camera view')}</option>`).join('');
+  if([...techniqueBaselineSelect.options].some(o=>o.value===previous))techniqueBaselineSelect.value=previous;
+  const chosen=selectedTechniqueBaseline(stroke);
+  document.getElementById('techniqueBaselineNote').textContent=chosen
+    ? `Using saved ${cap(stroke)} session from ${new Date(chosen.ts).toLocaleDateString()} (${chosen.score}/100). No second upload is needed.`
+    : `No saved ${stroke} session is available yet. You can still analyze the reference; comparison will begin after you save your own ${stroke} session.`;
+}
+techniqueStrokeSelect.onchange=refreshTechniqueBaselineChoices;
+techniqueBaselineSelect.onchange=refreshTechniqueBaselineChoices;
+refreshTechniqueBaselineChoices();
+
 techniqueInput.onchange=e=>{
  const f=e.target.files[0];if(!f)return;
  techniqueFile=f;
@@ -770,11 +949,34 @@ async function analyzeTechniqueClip(){
    }catch(e){console.warn('Technique sample skipped',e)}
  }
  const rows=[];if(reads.length){const keys=[...new Set(reads.flatMap(x=>x.s.rows.map(r=>r.key)))];keys.forEach(key=>{const vals=reads.flatMap(x=>x.s.rows.filter(r=>r.key===key).map(r=>r.score));if(vals.length)rows.push({key,label:techMetricName(key),score:Math.round(median(vals))})})}
- const fit=buildTechniqueFit(stroke,rows),borrow=fit.filter(x=>x.status==='good').map(x=>x.key);
- techniqueDraft={id:'tech-'+Date.now(),title,stroke,source,notes,createdAt:Date.now(),duration,readCount:reads.length,sampleCount:samples,rows,fit,borrow,thumbnail:thumb,playerId:state.activeProfileId||null};
- document.getElementById('techniqueAnalysisSummary').innerHTML=`<div class="notice good">${reads.length}/${samples} sampled moments produced mechanics reads.</div>${techniqueSummaryFromRows(stroke,rows).map(t=>`<div class="note-item">${esc(t)}</div>`).join('')}`;
- document.getElementById('techniqueFitSummary').innerHTML=fit.length?fit.map(f=>`<div class="note-item fit-${f.status}"><strong>${esc(f.label)}</strong><div class="sub">Reference ${f.reference}/100${f.current==null?'':` | You ${f.current}/100`}</div><div>${esc(f.text)}</div></div>`).join(''):'<div class="sub">No direct mechanics comparison available for this technique type yet.</div>';
- document.getElementById('techniqueBorrowOptions').innerHTML=fit.length?fit.map(f=>`<label class="note-item"><input type="checkbox" data-tech-key="${f.key}" ${f.status==='good'?'checked':''} style="width:auto;margin-right:8px">${esc(f.label)} — ${esc(f.text)}</label>`).join(''):'<div class="sub">Add your own notes and save this technique as a reference.</div>';
+ const baselineSession=selectedTechniqueBaseline(stroke);
+ const fit=buildTechniqueFit(stroke,rows,baselineSession),borrow=fit.filter(x=>x.status==='good').map(x=>x.key);
+ const theme=techniqueTheme(title,notes,stroke);
+ techniqueDraft={id:'tech-'+Date.now(),title,stroke,source,notes,createdAt:Date.now(),duration,readCount:reads.length,sampleCount:samples,rows,fit,borrow,thumbnail:thumb,playerId:state.activeProfileId||null,
+   theme,baselineReviewId:baselineSession?.reviewId||null,baselineTs:baselineSession?.ts||null};
+ document.getElementById('techniqueAnalysisSummary').innerHTML=
+   `<div class="notice good">${reads.length}/${samples} sampled moments produced mechanics reads.</div>`+
+   techniqueExplanation(theme,fit).map(t=>`<div class="note-item">${t}</div>`).join('')+
+   `<div class="sub" style="margin-top:8px">Supporting pose metrics: ${techniqueSummaryFromRows(stroke,rows).map(esc).join(' | ')}</div>`;
+
+ const baselineUsed=document.getElementById('techniqueBaselineUsed');
+ baselineUsed.innerHTML=baselineSession
+   ? `<strong>Automatic comparison:</strong> your saved ${cap(stroke)} session from ${new Date(baselineSession.ts).toLocaleDateString()} — ${baselineSession.score}/100.`
+   : `<strong>No saved comparison yet.</strong> This reference is saved now; after your next ${cap(stroke)} session Stroke Lab can compare them automatically.`;
+
+ document.getElementById('techniqueFitSummary').innerHTML=fit.length
+   ? fit.map(f=>`<div class="note-item fit-${f.status}"><strong>${esc(f.label)}</strong><div class="sub">Reference ${f.reference}/100${f.current==null?'':` | You ${f.current}/100`}</div><div>${esc(f.text)}</div></div>`).join('')
+   : '<div class="sub">No direct mechanics comparison available for this technique type yet.</div>';
+
+ document.getElementById('techniqueHowTo').innerHTML=
+   techniqueHowToPlan(theme,fit).map(t=>`<div class="note-item">${t}</div>`).join('');
+
+ document.getElementById('techniqueBorrowOptions').innerHTML=fit.length
+   ? fit.map(f=>`<label class="note-item borrow-option"><input type="checkbox" data-tech-key="${f.key}" ${f.status==='good'?'checked':''}><span class="borrow-copy"><strong>${esc(f.label)}</strong>${esc(f.text)}</span></label>`).join('')
+   : '<div class="sub">Save this technique as a visual reference and add your own implementation notes.</div>';
+
+ document.getElementById('techniqueValidationPlan').innerHTML=
+   techniqueValidationPlan(theme,stroke,fit).map(t=>`<div class="note-item">${t}</div>`).join('');
  document.getElementById('techniqueAnalysisCard').classList.remove('hidden');
  techniqueAnalyzeBtn.textContent='Analyze technique';techniqueAnalyzeBtn.disabled=false;
  techniqueStatus.textContent=reads.length
@@ -788,7 +990,7 @@ document.getElementById('resetTechniqueBtn').onclick=resetTechniqueForm;
 async function renderTechniqueLibrary(){
  const el=document.getElementById('techniqueLibrary');if(!el)return;let rows=[];try{rows=(await getTechniqueRecords()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))}catch(e){el.innerHTML='<div class="sub">Technique Library is unavailable in this browser session.</div>';return}
  if(!rows.length){el.innerHTML='<div class="sub">No saved techniques yet.</div>';return}
- el.innerHTML=rows.map(r=>{const borrowed=(r.borrow||[]).map(techMetricName).join(', ')||'Saved as reference only';return `<div class="card technique-card">${r.thumbnail?`<img class="technique-thumb" src="${r.thumbnail}" alt="${esc(r.title)}">`:''}<div style="margin-top:8px"><span class="tech-pill">${esc(cap(r.stroke))}</span></div><h3 style="margin:8px 0 4px">${esc(r.title)}</h3>${r.source?`<div class="sub">${esc(r.source)}</div>`:''}${r.notes?`<div style="margin-top:8px">${esc(r.notes)}</div>`:''}<div class="sub" style="margin-top:8px">Borrowing: ${esc(borrowed)}</div><div class="technique-actions"><button class="ghost" data-play-tech="${r.id}">Open clip</button><button class="ghost" data-delete-tech="${r.id}">Delete</button></div></div>`}).join('');
+ el.innerHTML=rows.map(r=>{const borrowed=(r.borrow||[]).map(techMetricName).join(', ')||'Saved as reference only';const baselineText=r.baselineTs?`Compared to your ${new Date(r.baselineTs).toLocaleDateString()} baseline`:'No player baseline when saved';return `<div class="card technique-card">${r.thumbnail?`<img class="technique-thumb" src="${r.thumbnail}" alt="${esc(r.title)}">`:''}<div style="margin-top:8px"><span class="tech-pill">${esc(cap(r.stroke))}</span></div><h3 style="margin:8px 0 4px">${esc(r.title)}</h3>${r.source?`<div class="sub">${esc(r.source)}</div>`:''}${r.notes?`<div style="margin-top:8px">${esc(r.notes)}</div>`:''}<div class="sub" style="margin-top:8px">Borrowing: ${esc(borrowed)}</div><div class="sub">${esc(baselineText)}</div><div class="technique-actions"><button class="ghost" data-play-tech="${r.id}">Open clip</button><button class="ghost" data-delete-tech="${r.id}">Delete</button></div></div>`}).join('');
  el.querySelectorAll('[data-delete-tech]').forEach(b=>b.onclick=async()=>{await deleteTechniqueRecord(b.dataset.deleteTech);renderTechniqueLibrary();refreshTechniqueSelect()});
  el.querySelectorAll('[data-play-tech]').forEach(b=>b.onclick=async()=>{const all=await getTechniqueRecords(),r=all.find(x=>x.id===b.dataset.playTech);if(!r?.videoBlob)return;const url=URL.createObjectURL(r.videoBlob);techniqueVideo.src=url;techniqueVideo.style.display='block';switchView('technique');techniqueVideo.play().catch(()=>{})})
 }
