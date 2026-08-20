@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V5.5</title>
+<title>Stroke Lab V5.6</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -194,7 +194,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
   .technique-actions{display:grid;grid-template-columns:1fr 1fr}
   .technique-actions button{width:100%}
 }
-</style>
+.rep-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}.rep-stat{border:1px solid var(--line);border-radius:12px;padding:10px;background:#0b0e0b}.rep-stat strong{display:block;font-size:18px}.experiment-verdict{border:1px solid #46533a;border-radius:14px;padding:12px;margin-top:10px;background:#0b100b}@media(max-width:760px){.rep-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>
 </head>
 <body>
 <div class="app">
@@ -506,7 +506,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V5.5 | technique-coaching beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V5.6 | stable-foundation beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -709,6 +709,7 @@ function renderProgress(){
       </summary>
       <div class="sub" style="margin-top:8px">${esc(s.angleLabel||'View not classified')} | ${cap(s.sessionMode||'practice')}</div>
       <div class="sub">${s.diagnostics?.processed||0}/${s.diagnostics?.frames||0} pose reads</div>
+      ${s.diagnostics?.segmentation?`<div class="sub">Active ${s.diagnostics.segmentation.activeFrames} | dead-air skipped ${s.diagnostics.segmentation.deadFrames} | FH ${s.diagnostics.segmentation.classified.forehand} | BH ${s.diagnostics.segmentation.classified.backhand} | serve ${s.diagnostics.segmentation.classified.serve} | unclassified ${s.diagnostics.segmentation.classified.unclassified}</div>`:''}
       ${s.outcomePattern?`<div class="sub">Ball pattern: ${esc(s.outcomePattern)}</div>`:''}
       <div style="margin-top:8px">${tips}</div>
     </details>`;
@@ -720,7 +721,7 @@ function openTechniqueDB(){return new Promise((resolve,reject)=>{const req=index
 async function saveTechniqueRecord(rec){const db=await openTechniqueDB();return new Promise((resolve,reject)=>{const tx=db.transaction(TECH_STORE,'readwrite');tx.objectStore(TECH_STORE).put(rec);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
 async function getTechniqueRecords(){const db=await openTechniqueDB();return new Promise((resolve,reject)=>{const tx=db.transaction(TECH_STORE,'readonly');const req=tx.objectStore(TECH_STORE).getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error)})}
 async function deleteTechniqueRecord(id){const db=await openTechniqueDB();return new Promise((resolve,reject)=>{const tx=db.transaction(TECH_STORE,'readwrite');tx.objectStore(TECH_STORE).delete(id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)})}
-function techMetricName(k){return {frontKnee:'Leg load',elbow:'Arm extension / spacing',stance:'Athletic base'}[k]||k}
+function techMetricName(k){return {frontKnee:'Leg load',elbow:'Arm extension / spacing',stance:'Athletic base',tossArm:'Toss-arm structure'}[k]||k}
 
 function comparableSavedSessions(stroke){
   const p=activeProfile();if(!p)return [];
@@ -998,6 +999,21 @@ const activeTechniqueSelect=document.getElementById('activeTechniqueSelect');
 async function refreshTechniqueSelect(){if(!activeTechniqueSelect)return;const current=state.sessionPrefs?.techniqueId||'';let rows=[];try{rows=await getTechniqueRecords()}catch(e){}activeTechniqueSelect.innerHTML='<option value="">No saved technique selected</option>'+rows.map(r=>`<option value="${r.id}">${esc(r.title)} — ${cap(r.stroke)}</option>`).join('');activeTechniqueSelect.value=current}
 activeTechniqueSelect.onchange=()=>{state.sessionPrefs.techniqueId=activeTechniqueSelect.value;saveState()};
 
+function experimentVerdict(result,tech){
+ const sr=(result.results||[]).find(x=>x.stroke===tech?.stroke);if(!sr)return null;
+ const keys=(tech.borrow||[]).length?tech.borrow:(tech.rows||[]).map(x=>x.key);
+ const d=keys.map(k=>{const now=sr.rows?.find(x=>x.key===k)?.score,base=tech.fit?.find(x=>x.key===k)?.current;return now==null||base==null?null:{label:techMetricName(k),now,base,delta:now-base}}).filter(Boolean);
+ if(!d.length)return {label:'Not enough comparable evidence',details:[]};
+ const avg=d.reduce((a,x)=>a+x.delta,0)/d.length;
+ return {label:avg>=8?'Improved':avg>=3?'Emerging':avg<=-6?'Regressed':'No clear change',details:d};
+}
+async function appendExperimentVerdict(result){
+ if(!result.techniqueId)return;
+ try{const all=await getTechniqueRecords(),tech=all.find(x=>x.id===result.techniqueId),v=experimentVerdict(result,tech);if(!tech||!v)return;
+ const host=document.getElementById('coachNotes');if(!host)return;
+ host.insertAdjacentHTML('beforeend',`<div class="experiment-verdict"><div class="eyebrow">Technique experiment</div><h3>${esc(tech.title)} — ${esc(v.label)}</h3>${v.details.map(x=>`<div class="note-item"><strong>${esc(x.label)}</strong><div class="sub">Baseline ${x.base} → now ${x.now} (${x.delta>=0?'+':''}${x.delta})</div></div>`).join('')}<div class="sub" style="margin-top:8px">Keep the change only if mechanics, comfort and ball outcome improve together.</div></div>`);
+ }catch(e){console.warn(e)}
+}
 function renderAll(){renderProfiles();renderNotes();renderProgress();renderGoldenGallery();renderDevelopmentHome();renderTechniqueLibrary();refreshTechniqueSelect();const p=activeProfile();if(p){dominantHand=p.hand;p.goldenMoments=p.goldenMoments||[]}}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function cap(s){return s? s[0].toUpperCase()+s.slice(1):''}
@@ -1337,24 +1353,48 @@ function metricsFromPose(pose){
  const frontKnee=angle(use(`${side}_hip`),use(`${side}_knee`),use(`${side}_ankle`));
  const backKnee=angle(use(`${other}_hip`),use(`${other}_knee`),use(`${other}_ankle`));
  const elbow=angle(use(`${side}_shoulder`),use(`${side}_elbow`),use(`${side}_wrist`));
+ const tossElbow=angle(use(`${other}_shoulder`),use(`${other}_elbow`),use(`${other}_wrist`));
+ const tossWrist=k[`${other}_wrist`],tossShoulder=k[`${other}_shoulder`];
+ const tossArmRaised=ok(tossWrist,.20)&&ok(tossShoulder,.20)?Math.max(0,(tossShoulder.y-tossWrist.y)/(torso||1)):null;
  let stance=null;if(ok(k.left_ankle)&&ok(k.right_ankle)&&torso)stance=dist(k.left_ankle,k.right_ankle)/torso;
  const reach=ok(k[`${side}_wrist`])&&torso&&ok(hipL)&&ok(hipR)?dist(k[`${side}_wrist`],{x:(hipL.x+hipR.x)/2,y:(hipL.y+hipR.y)/2})/torso:null;
- return {frontKnee,backKnee,elbow,stance,reach,readablePct:readable/total,angleLabel,has3D:!!k3,kp:k};
+ return {frontKnee,backKnee,elbow,tossElbow,tossArmRaised,stance,reach,readablePct:readable/total,angleLabel,has3D:!!k3,kp:k};
 }
 function servePhase(m){
- const k=m.kp||{},side=dominantHand==='left'?'left':'right';
- const w=k[side+'_wrist'],sh=k[side+'_shoulder'],hip=k[side+'_hip'];
- if(ok(w,.20)&&ok(sh,.20)&&w.y<sh.y)return 'upward-extension';
+ const k=m.kp||{},hit=dominantHand==='left'?'left':'right',toss=hit==='left'?'right':'left';
+ const hw=k[hit+'_wrist'],hs=k[hit+'_shoulder'],hh=k[hit+'_hip'],tw=k[toss+'_wrist'],ts=k[toss+'_shoulder'];
+ if(ok(tw,.20)&&ok(ts,.20)&&tw.y<ts.y&&(m.tossElbow||0)>145)return 'toss';
+ if(ok(hw,.20)&&ok(hs,.20)&&hw.y<hs.y&&(m.elbow||0)>150)return 'upward-extension';
  if(m.frontKnee!=null&&m.frontKnee<145)return 'load';
- if(ok(w,.20)&&ok(hip,.20)&&w.y<hip.y)return 'trophy';
+ if(ok(hw,.20)&&ok(hh,.20)&&hw.y<hh.y)return 'trophy-transition';
  return 'setup-recovery';
+}
+let previousMotionPose=null,repStats={activeFrames:0,deadFrames:0,classified:{forehand:0,backhand:0,serve:0,unclassified:0}};
+function frameActivityAndClass(m){
+ const k=m.kp||{},names=['left_wrist','right_wrist','left_elbow','right_elbow','left_shoulder','right_shoulder','left_hip','right_hip'];
+ let vals=[];if(previousMotionPose)names.forEach(n=>{if(ok(k[n],.18)&&ok(previousMotionPose[n],.18))vals.push(dist(k[n],previousMotionPose[n]))});
+ previousMotionPose=k;
+ const scale=Math.max(30,Math.abs((k.left_shoulder?.y||0)-(k.left_hip?.y||0))),motion=(vals.length?median(vals):0)/scale;
+ const hit=dominantHand==='left'?'left':'right',hw=k[hit+'_wrist'],hs=k[hit+'_shoulder'],hipL=k.left_hip,hipR=k.right_hip;
+ let cls={stroke:'unclassified',confidence:.2};
+ if(ok(hw,.20)&&ok(hs,.20)&&ok(hipL,.20)&&ok(hipR,.20)){
+   if(hw.y<hs.y-scale*.12)cls={stroke:'serve',confidence:.88};
+   else{
+     const torsoX=(hipL.x+hipR.x)/2,torsoW=Math.max(18,Math.abs((k.left_shoulder?.x||0)-(k.right_shoulder?.x||0))),signed=(hit==='right'?1:-1)*(hw.x-torsoX);
+     if(Math.abs(signed)>=torsoW*.22)cls=signed>0?{stroke:'forehand',confidence:.68}:{stroke:'backhand',confidence:.68};
+   }
+ }
+ const active=motion>.045||cls.stroke==='serve';
+ repStats[active?'activeFrames':'deadFrames']++;repStats.classified[cls.stroke]++;
+ return {active,cls,motion};
 }
 function scoreOne(m,stroke){
  const t=targets[stroke];
  const phase=stroke==='serve'?servePhase(m):null;
  const rows=stroke==='serve'?[
-  {key:'frontKnee',label:'Leg load',v:(phase==='load'||phase==='trophy')?m.frontKnee:null,range:t.frontKnee,phase},
-  {key:'elbow',label:'Upward arm extension',v:(phase==='upward-extension'||phase==='trophy')?m.elbow:null,range:t.elbow,phase},
+  {key:'tossArm',label:'Toss-arm structure',v:phase==='toss'?m.tossElbow:null,range:[155,180],phase},
+  {key:'frontKnee',label:'Leg load',v:(phase==='load'||phase==='trophy-transition')?m.frontKnee:null,range:t.frontKnee,phase},
+  {key:'elbow',label:'Upward arm extension',v:(phase==='upward-extension'||phase==='trophy-transition')?m.elbow:null,range:t.elbow,phase},
   {key:'stance',label:'Setup / landing balance',v:phase==='setup-recovery'?m.stance:null,range:t.stance,phase}
  ]:[
   {key:'frontKnee',label:'Front knee bend',v:m.frontKnee,range:t.frontKnee},
@@ -1427,14 +1467,14 @@ function drawPose(k){
 let analysisCancelled=false;
 const cancelAnalysisBtn=document.getElementById('cancelAnalysisBtn');
 cancelAnalysisBtn.onclick=()=>{analysisCancelled=true;statusEl.textContent='Stopping review...'};
-function goldenMetricLabel(k){return {frontKnee:'Knee load',elbow:'Contact spacing / extension',stance:'Athletic base'}[k]||k}
-function goldenCue(k){return {frontKnee:'Recreate this leg load and stay down through the hitting zone.',elbow:'Recreate this spacing and extension through the hitting zone.',stance:'Recreate this balanced base and body position.'}[k]||'Recreate this body position.'}
+function goldenMetricLabel(k){return {frontKnee:'Knee load',elbow:'Contact spacing / extension',stance:'Athletic base',tossArm:'Toss-arm structure'}[k]||k}
+function goldenCue(k){return {frontKnee:'Recreate this leg load and stay down through the hitting zone.',elbow:'Recreate this spacing and extension through the hitting zone.',stance:'Recreate this balanced base and body position.',tossArm:'Recreate this straight, organized toss-arm position.'}[k]||'Recreate this body position.'}
 function captureGoldenFrame(stroke,m,s,t,source){if((m.readablePct||0)<.82)return;const rows=(s.rows||[]).filter(r=>(r.score||0)>=90);if(!rows.length)return;let image='';try{image=work.toDataURL('image/jpeg',.70)}catch(e){return}rows.forEach(r=>goldenCandidates.push({id:uid(),stroke,metricKey:r.key,metric:goldenMetricLabel(r.key),metricScore:r.score,frameScore:s.score,t,source,image,cue:goldenCue(r.key),visibility:m.readablePct}))}
 function chooseGoldenMoments(list){const best={};list.forEach(g=>{const k=g.stroke+':'+g.metricKey;if(!best[k]||g.metricScore>best[k].metricScore||(g.metricScore===best[k].metricScore&&g.frameScore>best[k].frameScore))best[k]=g});return Object.values(best)}
 function renderGoldenGallery(){const p=activeProfile(),el=document.getElementById('goldenGallery');if(!el)return;const ms=(p?.goldenMoments||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));if(!ms.length){el.innerHTML='<div class="span12 sub">No Golden Moments yet. A frame is saved only when a specific mechanic scores 90+ with strong visibility.</div>';return}el.innerHTML=ms.slice(0,18).map(g=>`<div class="card golden-card span4"><img class="golden-img" src="${g.image}"><div style="margin-top:9px"><span class="golden-badge">${esc(g.metric)} ${g.metricScore}</span></div><h3 style="margin:8px 0 4px">${cap(g.stroke)}</h3><div class="sub">${esc(g.cue)}</div><div class="sub" style="margin-top:6px">${new Date(g.ts).toLocaleDateString()} | ${esc(g.angleLabel||'camera view')}</div></div>`).join('')}
 
 analyzeBtn.onclick=async()=>{
- playerLock=null;
+ playerLock=null;previousMotionPose=null;repStats={activeFrames:0,deadFrames:0,classified:{forehand:0,backhand:0,serve:0,unclassified:0}};
  const p=activeProfile();if(p)dominantHand=p.hand;
  await acquireReviewWakeLock();
  const strokes=[...selectedStrokes];
@@ -1490,7 +1530,7 @@ analyzeBtn.onclick=async()=>{
  };
  saveReviewCheckpoint(checkpoint);
 
- statusEl.textContent=`Preparing ${frames} samples. Stroke Lab will move forward through the clip using normal playback decoding instead of repeatedly seeking.`;
+ statusEl.textContent=`Preparing ${frames} samples. Stroke Lab will skip low-motion/dead-air frames and only score frames classified as ${strokes.map(cap).join(' + ')}; uncertain frames stay unclassified.`;
 
  try{
    for(let i=0;i<frames;i++){
@@ -1518,15 +1558,17 @@ analyzeBtn.onclick=async()=>{
          readability+=m.readablePct;
          angles[m.angleLabel]=(angles[m.angleLabel]||0)+1;
          let frameUsable=false;
-         strokes.forEach(stroke=>{
+         const seg=frameActivityAndClass(m);
+         // Dead-air frames and non-selected groundstrokes are excluded from mechanics scoring.
+         if(seg.active)strokes.forEach(stroke=>{
+           const classOK=stroke==='serve'?seg.cls.stroke==='serve':seg.cls.stroke===stroke;
+           if(!classOK)return;
            const s=scoreOne(m,stroke);
-           if(s.rows.length>=2){
+           if(s.rows.length>=1){
              frameUsable=true;
-             samplesByStroke[stroke].push({m,s,t:video.currentTime,source:poseRead.source});
+             samplesByStroke[stroke].push({m,s,t:video.currentTime,source:poseRead.source,classification:seg.cls.stroke,classConfidence:seg.cls.confidence,phase:stroke==='serve'?servePhase(m):null});
              captureGoldenFrame(stroke,m,s,video.currentTime,poseRead.source);
-             if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score){
-               bestByStroke[stroke]={m,s,t:video.currentTime,source:poseRead.source};
-             }
+             if(!bestByStroke[stroke]||s.score>bestByStroke[stroke].s.score)bestByStroke[stroke]={m,s,t:video.currentTime,source:poseRead.source};
            }
          });
          if(frameUsable)valid++;
@@ -1630,9 +1672,9 @@ analyzeBtn.onclick=async()=>{
    lastResult={
      score,strokes,ts:Date.now(),angleLabel,detectedAngleLabel,requestedAngle,sessionMode,outcomePattern:outcomePatternValue,techniqueId:(state.sessionPrefs?.techniqueId||''),visibility:avgRead,
      results:strokeResults,has3D:readable.some(r=>r.has3D),
-     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors,...diag},goldenMoments:chooseGoldenMoments(goldenCandidates),autoSaved:true,reviewId:checkpoint.id
+     diagnostics:{frames,processed,seekSkips:decodeMisses,decodeMisses,poseErrors,...diag,segmentation:repStats},goldenMoments:chooseGoldenMoments(goldenCandidates),autoSaved:true,reviewId:checkpoint.id
    };
-   renderResult(lastResult);
+   renderResult(lastResult);appendExperimentVerdict(lastResult);
    if(p){
      p.sessions=p.sessions||[];
      if(!p.sessions.some(s=>s.reviewId===checkpoint.id)){
