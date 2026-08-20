@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Stroke Lab" />
 <link rel="apple-touch-icon" href="stroke-lab-icon.png?v=36" />
 <link rel="icon" type="image/png" href="stroke-lab-icon.png?v=36" />
-<title>Stroke Lab V5.3</title>
+<title>Stroke Lab V5.4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
@@ -428,6 +428,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
           <button class="ghost" id="analyzeTechniqueBtn" disabled>Analyze technique</button>
         </div>
         <div class="sub" id="techniqueVideoMeta" style="margin-top:8px">No technique clip loaded</div>
+        <div class="sub" id="techniqueStatus" style="margin-top:6px">Choose a clip to begin.</div>
         <video id="techniqueVideo" controls playsinline muted style="display:none;width:100%;margin-top:12px;border-radius:16px;border:1px solid var(--line);background:#050705"></video>
 
         <div class="hidden" id="techniqueAnalysisCard" style="margin-top:14px">
@@ -463,7 +464,7 @@ footer{color:#6f776f;font-size:11px;text-align:center;margin-top:20px;padding:14
     </div>
   </section>
 
-  <footer>Stroke Lab V5.3 | technique-lab development beta | video analysis runs in your browser</footer>
+  <footer>Stroke Lab V5.4 | technique-lab reliability beta | video analysis runs in your browser</footer>
 </div>
 
 <div class="modal" id="profileModal"><div class="modal-card">
@@ -691,25 +692,80 @@ function resetTechniqueForm(){
  if(techniqueObjectURL){URL.revokeObjectURL(techniqueObjectURL);techniqueObjectURL=null}
  techniqueVideo.removeAttribute('src');techniqueVideo.load();techniqueVideo.style.display='none';
  document.getElementById('techniqueVideoMeta').textContent='No technique clip loaded';
+ document.getElementById('techniqueStatus').textContent='Choose a clip to begin.';
  document.getElementById('techniqueAnalysisCard').classList.add('hidden');techniqueAnalyzeBtn.disabled=true
 }
-techniqueInput.onchange=e=>{const f=e.target.files[0];if(!f)return;techniqueFile=f;if(techniqueObjectURL)URL.revokeObjectURL(techniqueObjectURL);techniqueObjectURL=URL.createObjectURL(f);techniqueVideo.src=techniqueObjectURL;techniqueVideo.style.display='block';document.getElementById('techniqueVideoMeta').textContent=`${f.name} | ${(f.size/1048576).toFixed(1)} MB`;techniqueVideo.onloadedmetadata=()=>{techniqueAnalyzeBtn.disabled=false}};
+techniqueInput.onchange=e=>{
+ const f=e.target.files[0];if(!f)return;
+ techniqueFile=f;
+ if(techniqueObjectURL)URL.revokeObjectURL(techniqueObjectURL);
+ techniqueObjectURL=URL.createObjectURL(f);
+ techniqueVideo.src=techniqueObjectURL;techniqueVideo.style.display='block';
+ document.getElementById('techniqueVideoMeta').textContent=`${f.name} | ${(f.size/1048576).toFixed(1)} MB`;
+ document.getElementById('techniqueStatus').textContent='Preparing video...';
+ techniqueAnalyzeBtn.disabled=true;
+
+ const ready=()=>{
+   if(!Number.isFinite(techniqueVideo.duration)||techniqueVideo.duration<=0)return;
+   techniqueAnalyzeBtn.disabled=false;
+   document.getElementById('techniqueStatus').textContent=modelReady
+     ? 'Video ready. Tap Analyze technique.'
+     : 'Video ready. Tap Analyze technique — Stroke Lab will finish loading the analysis engine if needed.';
+ };
+ techniqueVideo.onloadedmetadata=ready;
+ techniqueVideo.onloadeddata=ready;
+ techniqueVideo.oncanplay=ready;
+ techniqueVideo.onerror=()=>{
+   techniqueAnalyzeBtn.disabled=true;
+   document.getElementById('techniqueStatus').textContent='This clip did not become playable. Try choosing it again or save a local copy first.';
+ };
+ techniqueVideo.load();
+};
 
 async function analyzeTechniqueClip(){
- if(!techniqueFile||!modelReady)return;
+ const techniqueStatus=document.getElementById('techniqueStatus');
+ if(!techniqueFile){
+   techniqueStatus.textContent='Choose a technique clip first.';
+   return;
+ }
+ if(!Number.isFinite(techniqueVideo.duration)||techniqueVideo.duration<=0){
+   techniqueStatus.textContent='The video is still being prepared. Wait a moment and try again.';
+   return;
+ }
+ techniqueAnalyzeBtn.disabled=true;
+ techniqueAnalyzeBtn.textContent='Preparing engine...';
+ if(!modelReady||!detector){
+   techniqueStatus.textContent='Loading analysis engine...';
+   const ready=await initModel();
+   if(!ready||!modelReady||!detector){
+     techniqueAnalyzeBtn.disabled=false;
+     techniqueAnalyzeBtn.textContent='Analyze technique';
+     techniqueStatus.textContent='Analysis engine did not load. Check your connection and tap Analyze technique to retry.';
+     return;
+   }
+ }
+ techniqueStatus.textContent='Analysis engine ready. Starting technique review...';
  const title=(document.getElementById('techniqueTitle').value||'Untitled technique').trim(),stroke=document.getElementById('techniqueStroke').value,source=(document.getElementById('techniqueSource').value||'').trim(),notes=(document.getElementById('techniqueNotes').value||'').trim();
  techniqueAnalyzeBtn.disabled=true;techniqueAnalyzeBtn.textContent='Analyzing...';
  const duration=techniqueVideo.duration||1,samples=Math.max(12,Math.min(36,Math.round(duration*1.2)));
  const c=document.createElement('canvas'),vw=techniqueVideo.videoWidth||640,vh=techniqueVideo.videoHeight||360,scale=Math.min(1,640/Math.max(vw,vh));c.width=Math.max(1,Math.round(vw*scale));c.height=Math.max(1,Math.round(vh*scale));const ctx=c.getContext('2d');
  let reads=[],thumb='';
  for(let i=0;i<samples;i++){
+   techniqueStatus.textContent=`Analyzing technique ${i+1} of ${samples}...`;
    const t=Math.min(duration-.08,(i+.5)*(duration/samples));
    try{
      techniqueVideo.currentTime=t;
      await new Promise(resolve=>{if(!techniqueVideo.seeking){resolve();return}const fn=()=>{techniqueVideo.removeEventListener('seeked',fn);resolve()};techniqueVideo.addEventListener('seeked',fn,{once:true});setTimeout(resolve,2200)});
      await sleep(80);ctx.drawImage(techniqueVideo,0,0,c.width,c.height);
      const poses=await estimateWithTimeout(detector,c,12000,'Technique pose read');if(!poses?.length)continue;
-     const hp=poses[0],m=metricsFromPose(hp),s=(stroke==='forehand'||stroke==='backhand'||stroke==='serve')?scoreOne(m,stroke):null;
+     const localDiag={identityRejects:0};
+     const oldWorkW=work.width,oldWorkH=work.height;
+     // humanPoseQuality references the main work-canvas dimensions; temporarily mirror this analysis canvas.
+     work.width=c.width;work.height=c.height;
+     const hp=chooseHumanPose(poses,localDiag);
+     work.width=oldWorkW;work.height=oldWorkH;
+     if(!hp)continue;
+     const m=metricsFromPose(hp),s=(stroke==='forehand'||stroke==='backhand'||stroke==='serve')?scoreOne(m,stroke):null;
      if(s?.rows?.length){reads.push({m,s,t});if(!thumb&&m.readablePct>=.8)try{thumb=c.toDataURL('image/jpeg',.72)}catch(e){}}
    }catch(e){console.warn('Technique sample skipped',e)}
  }
@@ -719,7 +775,11 @@ async function analyzeTechniqueClip(){
  document.getElementById('techniqueAnalysisSummary').innerHTML=`<div class="notice good">${reads.length}/${samples} sampled moments produced mechanics reads.</div>${techniqueSummaryFromRows(stroke,rows).map(t=>`<div class="note-item">${esc(t)}</div>`).join('')}`;
  document.getElementById('techniqueFitSummary').innerHTML=fit.length?fit.map(f=>`<div class="note-item fit-${f.status}"><strong>${esc(f.label)}</strong><div class="sub">Reference ${f.reference}/100${f.current==null?'':` | You ${f.current}/100`}</div><div>${esc(f.text)}</div></div>`).join(''):'<div class="sub">No direct mechanics comparison available for this technique type yet.</div>';
  document.getElementById('techniqueBorrowOptions').innerHTML=fit.length?fit.map(f=>`<label class="note-item"><input type="checkbox" data-tech-key="${f.key}" ${f.status==='good'?'checked':''} style="width:auto;margin-right:8px">${esc(f.label)} — ${esc(f.text)}</label>`).join(''):'<div class="sub">Add your own notes and save this technique as a reference.</div>';
- document.getElementById('techniqueAnalysisCard').classList.remove('hidden');techniqueAnalyzeBtn.textContent='Analyze technique';techniqueAnalyzeBtn.disabled=false
+ document.getElementById('techniqueAnalysisCard').classList.remove('hidden');
+ techniqueAnalyzeBtn.textContent='Analyze technique';techniqueAnalyzeBtn.disabled=false;
+ techniqueStatus.textContent=reads.length
+   ? `Technique review complete: ${reads.length} usable mechanics reads.`
+   : 'Technique review finished, but no reliable body-mechanics reads were found. Try a shorter/brighter clip or one where the full player is easier to see.';
 }
 techniqueAnalyzeBtn.onclick=analyzeTechniqueClip;
 document.getElementById('saveTechniqueBtn').onclick=async()=>{if(!techniqueDraft)return;techniqueDraft.borrow=[...document.querySelectorAll('[data-tech-key]:checked')].map(x=>x.dataset.techKey);techniqueDraft.summary=techniqueSummaryFromRows(techniqueDraft.stroke,techniqueDraft.rows);if(techniqueFile){techniqueDraft.videoBlob=techniqueFile;techniqueDraft.videoName=techniqueFile.name;techniqueDraft.videoType=techniqueFile.type}await saveTechniqueRecord(techniqueDraft);await renderTechniqueLibrary();await refreshTechniqueSelect();resetTechniqueForm()};
@@ -901,8 +961,12 @@ function loadPoseLibraries(){
   return poseLibsPromise;
 }
 
+let modelInitPromise=null;
 async function initModel(){
- try{
+ if(modelReady&&detector)return true;
+ if(modelInitPromise)return modelInitPromise;
+ modelInitPromise=(async()=>{
+  try{
    await loadPoseLibraries();
    await tf.setBackend('webgl');await tf.ready();
    try{
@@ -914,16 +978,26 @@ async function initModel(){
      statusEl.textContent=isiOSDevice?'3D pose model ready (mobile-optimized).':'3D pose model ready.';
    }catch(e){
      console.warn('BlazePose unavailable, falling back to MoveNet',e);
-     detector=await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,{modelType:poseDetection.movenet.modelType.SINGLEPOSE_THUNDER});
+     detector=await poseDetection.createDetector(
+       poseDetection.SupportedModels.MoveNet,
+       {modelType:poseDetection.movenet.modelType.SINGLEPOSE_THUNDER}
+     );
      statusEl.textContent='Pose model ready (2D fallback).';
    }
    modelReady=true;refreshStrokeButtons();
- }catch(e){
+   return true;
+  }catch(e){
    console.error(e);
+   modelReady=false;
    statusEl.textContent=navigator.onLine
      ? 'Analysis engine could not finish loading. You can still use profiles and load videos; retrying when connectivity improves.'
      : 'Offline: profiles and video loading still work. Analysis will retry when you reconnect.';
- }
+   return false;
+  }finally{
+   modelInitPromise=null;
+  }
+ })();
+ return modelInitPromise;
 }
 initModel();
 window.addEventListener('online',()=>{if(!modelReady)initModel()});
